@@ -334,7 +334,7 @@ const NAV = {
   ],
   STAFF: [
     ["dashboard", "📋"], ["classes", "🏫"], ["planner", "📅"], ["subscriptions", "🎫"], ["students", "🎓"],
-    ["attendance", "✅"], ["payments", "💳"], ["announcements", "📢"], ["notifications", "🔔"], ["settings", "⚙️"],
+    ["parents", "👨‍👩‍👧"], ["attendance", "✅"], ["payments", "💳"], ["announcements", "📢"], ["notifications", "🔔"], ["settings", "⚙️"],
   ],
   TEACHER: [
     ["dashboard", "🏠"], ["timetable", "🗓️"], ["attendance", "✅"], ["mySalary", "💵"],
@@ -1482,9 +1482,13 @@ function StudentsScreen({ canPay = true }) {
   // assignment form
   const [aSub, setASub] = useState(SUB_TYPES[0]?.id || "");
   const [aStart, setAStart] = useState(new Date().toISOString().slice(0, 10));
+  const [aPaidNow, setAPaidNow] = useState("");
+  const [aPayMethod, setAPayMethod] = useState("cash");
   const subObj = SUB_TYPES.find((s) => s.id === aSub);
   const aExpiry = subObj && subObj.expiryEnabled && subObj.days ? addDays(aStart, subObj.days) : null;
   const subPlan = subObj ? PLANS.find((p) => p.id === subObj.planId) : null;
+  const aEffectivePaid = subObj ? (aPaidNow === "" ? subObj.total : Math.min(Math.max(parseFloat(aPaidNow) || 0, 0), subObj.total)) : 0;
+  const aDebt = subObj ? subObj.total - aEffectivePaid : 0;
 
   const doRefresh = async () => { setStudents(await reloadStudents()); };
 
@@ -1562,6 +1566,10 @@ function StudentsScreen({ canPay = true }) {
     if (!assign || !subObj) return;
     try {
       await db.assignSubscription(assign.id, subObj, aStart, aExpiry);
+      if (aEffectivePaid > 0) {
+        const collectorName = profile?.full_name || "Admin";
+        await db.addPayment(assign.id, aEffectivePaid, aPayMethod, collectorName, profile?.id, collectorName);
+      }
       await doRefresh();
       setAssign(null);
     } catch (e) { alert(e.message); }
@@ -1579,7 +1587,7 @@ function StudentsScreen({ canPay = true }) {
 
   const actions = (s) => [
     { icon: "👁️", label: t.view, onClick: () => openView(s) },
-    { icon: "🎫", label: t.assignSub, onClick: () => { setAssign(s); setASub(SUB_TYPES[0]?.id || ""); setAStart(new Date().toISOString().slice(0, 10)); } },
+    { icon: "🎫", label: t.assignSub, onClick: () => { setAssign(s); setASub(SUB_TYPES[0]?.id || ""); setAStart(new Date().toISOString().slice(0, 10)); setAPaidNow(""); setAPayMethod("cash"); } },
     ...(canPay ? [{ icon: "💳", label: t.payDebt, onClick: () => { setPay(s); setPayAmt(""); setPayMethod("cash"); } }] : []),
     { icon: "✏️", label: t.edit, onClick: () => openEdit(s) },
     { icon: "🗑️", label: t.delete, danger: true, onClick: () => setDel(s) },
@@ -1662,7 +1670,7 @@ function StudentsScreen({ canPay = true }) {
           <div>
             <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 0 }}>{assign.firstName} {assign.lastName}</p>
             <Field label={t.subscription}>
-              <Select value={aSub} onChange={(e) => setASub(e.target.value)}>
+              <Select value={aSub} onChange={(e) => { setASub(e.target.value); setAPaidNow(""); }}>
                 {SUB_TYPES.map((s) => <option key={s.id} value={s.id}>{s.name} — {fmt(s.total)}</option>)}
               </Select>
             </Field>
@@ -1680,10 +1688,38 @@ function StudentsScreen({ canPay = true }) {
             )}
             <Field label={t.startDate}><Input type="date" value={aStart} onChange={(e) => setAStart(e.target.value)} /></Field>
             {subObj && subObj.expiryEnabled ? (
-              <div style={{ fontSize: 13.5, color: "var(--muted)" }}>{t.expiryDate} ({t.autoCalculated}): <b className="mono" style={{ color: "var(--amber)" }}>{aExpiry}</b></div>
+              <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>{t.expiryDate} ({t.autoCalculated}): <b className="mono" style={{ color: "var(--amber)" }}>{aExpiry}</b></div>
             ) : subObj ? (
-              <div style={{ fontSize: 13.5, color: "var(--muted)" }}>{t.seancesLeft}: <b className="mono" style={{ color: "var(--green)" }}>{subObj.seancesCount}</b> · {t.noExpiry}</div>
+              <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>{t.seancesLeft}: <b className="mono" style={{ color: "var(--green)" }}>{subObj.seancesCount}</b> · {t.noExpiry}</div>
             ) : null}
+            {subObj && (
+              <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <Field label={t.amountNow}>
+                    <Input
+                      type="number" min="0" max={subObj.total} step="any"
+                      value={aPaidNow === "" ? subObj.total : aPaidNow}
+                      onChange={(e) => setAPaidNow(e.target.value)}
+                    />
+                  </Field>
+                  <Field label={t.method}>
+                    <Select value={aPayMethod} onChange={(e) => setAPayMethod(e.target.value)}>
+                      <option value="cash">{t.cash}</option>
+                      <option value="card">{t.card}</option>
+                      <option value="transfer">{t.transfer}</option>
+                    </Select>
+                  </Field>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, padding: "10px 14px", borderRadius: 10, background: aDebt > 0 ? "var(--red-bg, #FEF2F2)" : "var(--green-bg)", border: `1px solid ${aDebt > 0 ? "var(--red)" : "var(--green)"}` }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: aDebt > 0 ? "var(--red)" : "var(--green)" }}>
+                    {aDebt > 0 ? `💳 ${t.debt}` : `✅ ${t.paid}`}
+                  </span>
+                  <span className="mono" style={{ fontSize: 15, fontWeight: 800, color: aDebt > 0 ? "var(--red)" : "var(--green)" }}>
+                    {fmt(aDebt)}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -3867,7 +3903,7 @@ function renderScreen(role, screen) {
     "ADMIN:reports": <ReportsScreen />, "ADMIN:analytics": <AnalyticsScreen />, "ADMIN:settings": <SettingsScreen />,
     // Staff
     "STAFF:dashboard": <AdminDashboard />, "STAFF:classes": <ClassesScreen />, "STAFF:planner": <PlannerScreen />, "STAFF:subscriptions": <SubscriptionsScreen />, "STAFF:students": <StudentsScreen canPay />,
-    "STAFF:attendance": <AdminAttendanceScreen />,
+    "STAFF:parents": <ParentsScreen />, "STAFF:attendance": <AdminAttendanceScreen />,
     "STAFF:payments": <PaymentsCollectScreen />,
     "STAFF:announcements": <AnnouncementsScreen />, "STAFF:notifications": <NotificationsScreen />, "STAFF:settings": <SettingsScreen ownOnly />,
     // Teacher

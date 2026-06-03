@@ -120,6 +120,7 @@ export const db = {
       sub_type_id: sub.id, sub_price: sub.total, final_price: sub.total, discount_pct: 0,
       seances_total: sub.seancesCount, seances_remaining: sub.seancesCount,
       start_date: startDate, expiry_date: expiryDate, expiry_enabled: sub.expiryEnabled,
+      paid: 0,
       status: "ACTIVE",
     }).eq("id", studentId).select().single().then(ok),
 
