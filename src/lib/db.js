@@ -118,8 +118,8 @@ export const db = {
   assignSubscription: (studentId, sub, startDate, expiryDate) =>
     supabase.from("students").update({
       sub_type_id: sub.id, sub_price: sub.total, final_price: sub.total, discount_pct: 0,
-      seances_total: sub.seances_count, seances_remaining: sub.seances_count,
-      start_date: startDate, expiry_date: expiryDate, expiry_enabled: sub.expiry_enabled,
+      seances_total: sub.seancesCount, seances_remaining: sub.seancesCount,
+      start_date: startDate, expiry_date: expiryDate, expiry_enabled: sub.expiryEnabled,
       status: "ACTIVE",
     }).eq("id", studentId).select().single().then(ok),
 

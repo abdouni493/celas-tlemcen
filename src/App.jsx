@@ -333,7 +333,7 @@ const NAV = {
     ["announcements", "📢"], ["reports", "💰"], ["settings", "⚙️"],
   ],
   STAFF: [
-    ["dashboard", "📋"], ["planner", "📅"], ["subscriptions", "🎫"], ["students", "🎓"], ["teachers", "👨‍🏫"],
+    ["dashboard", "📋"], ["classes", "🏫"], ["planner", "📅"], ["subscriptions", "🎫"], ["students", "🎓"],
     ["attendance", "✅"], ["payments", "💳"], ["announcements", "📢"], ["notifications", "🔔"], ["settings", "⚙️"],
   ],
   TEACHER: [
@@ -3866,8 +3866,8 @@ function renderScreen(role, screen) {
     "ADMIN:expenses": <ExpensesScreen />, "ADMIN:announcements": <AnnouncementsScreen />,
     "ADMIN:reports": <ReportsScreen />, "ADMIN:analytics": <AnalyticsScreen />, "ADMIN:settings": <SettingsScreen />,
     // Staff
-    "STAFF:dashboard": <AdminDashboard />, "STAFF:planner": <PlannerScreen />, "STAFF:subscriptions": <SubscriptionsScreen />, "STAFF:students": <StudentsScreen canPay />,
-    "STAFF:teachers": <PeopleScreen people={TEACHERS} kind="teacher" />, "STAFF:attendance": <AdminAttendanceScreen />,
+    "STAFF:dashboard": <AdminDashboard />, "STAFF:classes": <ClassesScreen />, "STAFF:planner": <PlannerScreen />, "STAFF:subscriptions": <SubscriptionsScreen />, "STAFF:students": <StudentsScreen canPay />,
+    "STAFF:attendance": <AdminAttendanceScreen />,
     "STAFF:payments": <PaymentsCollectScreen />,
     "STAFF:announcements": <AnnouncementsScreen />, "STAFF:notifications": <NotificationsScreen />, "STAFF:settings": <SettingsScreen ownOnly />,
     // Teacher
