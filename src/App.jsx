@@ -3134,11 +3134,15 @@ function PaymentsCollectScreen() {
 const ME_STUDENT = () => STUDENTS[0] || {};
 const ME_TEACHER = () => TEACHERS[0] || {};
 
-function TimetableGrid({ teacherId }) {
+function TimetableGrid({ teacherId, classId }) {
   const t = useT();
   const slots = ["08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
   const days = t.days.slice(0, 6);
-  const source = teacherId ? PLANS.filter((p) => p.teacherId === teacherId) : PLANS;
+  const source = teacherId
+    ? PLANS.filter((p) => p.teacherId === teacherId)
+    : classId
+      ? PLANS.filter((p) => p.classId === classId)
+      : PLANS;
   const colorFor = (p) => {
     const palette = ["var(--grad-primary)", "var(--grad-green)", "var(--grad-amber)", "var(--grad-sky)", "var(--grad-red)"];
     return palette[(p.teacherId ? parseInt(p.teacherId.replace(/\D/g, "") || "0") : 0) % palette.length];
@@ -3194,7 +3198,8 @@ function TimetableGrid({ teacherId }) {
 }
 
 function StudentHome() {
-  const t = useT(); const s = ME_STUDENT();
+  const t = useT(); const profile = useProfile();
+  const s = STUDENTS.find((x) => x.id === profile?.student_id) || ME_STUDENT();
   return (
     <div>
       <PageHead icon="🏠" title={`${t.welcome}, ${s.firstName}`} sub={s.className + " · " + s.group} />
@@ -3231,7 +3236,8 @@ function StudentHome() {
 }
 
 function StudentPayments() {
-  const t = useT(); const s = ME_STUDENT();
+  const t = useT(); const profile = useProfile();
+  const s = STUDENTS.find((x) => x.id === profile?.student_id) || ME_STUDENT();
   return (
     <div>
       <PageHead icon="💵" title={t.payments} />
@@ -3933,6 +3939,9 @@ function ProfileWrap({ which }) {
 --------------------------------------------------------------------------- */
 function Shell({ role, lang, setLang, onSignOut }) {
   const t = useT(); const rtl = lang === "ar";
+  const profile = useProfile();
+  const meTeacher = role === "TEACHER" ? (TEACHERS.find((x) => x.id === profile?.teacher_id) || null) : null;
+  const meStudent = role === "STUDENT" ? (STUDENTS.find((x) => x.id === profile?.student_id) || null) : null;
   const nav = NAV[role];
   const [active, setActive] = useState(() => {
     try {
@@ -3998,7 +4007,7 @@ function Shell({ role, lang, setLang, onSignOut }) {
   // adjust router for profile title screens
   let content = renderScreen(role, active);
   if (active === "myProfile" || active === "myAccount") content = <ProfileWrap which={active} />;
-  if (active === "timetable") content = <div><PageHead icon="🗓️" title={t.timetable} sub={role === "TEACHER" ? `${ME_TEACHER().firstName} ${ME_TEACHER().lastName}` : undefined} /><TimetableGrid teacherId={role === "TEACHER" ? ME_TEACHER().id : undefined} /></div>;
+  if (active === "timetable") content = <div><PageHead icon="🗓️" title={t.timetable} sub={meTeacher ? `${meTeacher.firstName} ${meTeacher.lastName}` : meStudent ? `${meStudent.firstName} ${meStudent.lastName}` : undefined} /><TimetableGrid teacherId={meTeacher?.id} classId={meStudent?.classId} /></div>;
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="sms app-bg" style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
