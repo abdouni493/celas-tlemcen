@@ -1467,7 +1467,7 @@ function SubscriptionsScreen() {
               <Panel title={t.total}><div className="mono grad-text" style={{ fontSize: 26, fontWeight: 800 }}>{fmt(detail.total)}</div></Panel>
             </div>
           );
-        ); })()}
+        })()}
       </Modal>
 
       <Confirm open={!!del} onClose={() => setDel(null)} onConfirm={() => del && doDelete(del)} />
