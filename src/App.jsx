@@ -1373,7 +1373,7 @@ function SubscriptionsScreen() {
                     </div>
                   ) : null;
                 })()}
-                <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>>
+                <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>🎟️ <b className="mono" style={{ color: "var(--ink)" }}>{s.seancesCount}</b> {t.seances.toLowerCase()}</span>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>👥 <b className="mono" style={{ color: "var(--ink)" }}>{st.count}</b></span>
                 </div>
