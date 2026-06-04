@@ -1290,7 +1290,7 @@ function SubscriptionsScreen() {
   const [detail, setDetail] = useState(null);
   const [del, setDel] = useState(null);
 
-  const blank = { name: "", planId: PLANS[0]?.id || "", classId: "", days: 30, seancesCount: 8, perSeance: 750, total: 6000, expiryEnabled: true, totalManual: false };
+  const blank = { name: "", planId: PLANS[0]?.id || "", days: 30, seancesCount: 8, perSeance: 750, total: 6000, expiryEnabled: true, totalManual: false };
   const [form, setForm] = useState(blank);
   const setF = (k, v) => setForm((p) => {
     const next = { ...p, [k]: v };
@@ -1303,13 +1303,12 @@ function SubscriptionsScreen() {
   const doRefresh = async () => { setSubs(await reloadSubTypes()); };
 
   const openCreate = () => { setEditing(null); setForm(blank); setModal(true); };
-  const openEdit = (s) => { setEditing(s); setForm({ name: s.name, planId: s.planId, classId: s.classId || "", days: s.days || 30, seancesCount: s.seancesCount, perSeance: s.perSeance, total: s.total, expiryEnabled: s.expiryEnabled, totalManual: true }); setModal(true); };
+  const openEdit = (s) => { setEditing(s); setForm({ name: s.name, planId: s.planId, days: s.days || 30, seancesCount: s.seancesCount, perSeance: s.perSeance, total: s.total, expiryEnabled: s.expiryEnabled, totalManual: true }); setModal(true); };
 
   const save = async () => {
     const payload = {
       name: form.name || "Abonnement",
       plan_id: form.planId || null,
-      class_id: form.classId || null,
       days: form.expiryEnabled ? +form.days : null,
       seances_count: +form.seancesCount,
       per_seance: +form.perSeance,
@@ -1365,7 +1364,16 @@ function SubscriptionsScreen() {
                 </div>
                 <h3 className="serif" style={{ margin: "12px 0 4px", fontSize: 18 }}>{s.name}</h3>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>📅 {planName(s.planId)}</p>
-                <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
+                {(() => {
+                  const plan = PLANS.find(p => p.id === s.planId);
+                  return plan ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, paddingTop: 8 }}>
+                      {plan.className && <span style={{ fontSize: 11, background: "var(--primary-50)", padding: "4px 8px", borderRadius: 6, color: "var(--primary-600)", fontWeight: 600 }}>📚 {plan.className}</span>}
+                      {plan.group && <span style={{ fontSize: 11, background: "var(--primary-50)", padding: "4px 8px", borderRadius: 6, color: "var(--primary-600)", fontWeight: 600 }}>👥 {plan.group}</span>}
+                    </div>
+                  ) : null;
+                })()}
+                <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>🎟️ <b className="mono" style={{ color: "var(--ink)" }}>{s.seancesCount}</b> {t.seances.toLowerCase()}</span>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>👥 <b className="mono" style={{ color: "var(--ink)" }}>{st.count}</b></span>
                 </div>
@@ -1395,19 +1403,24 @@ function SubscriptionsScreen() {
       <Modal open={modal} onClose={() => setModal(false)} title={(editing ? t.edit : t.create) + " · " + t.subscription} wide
         footer={<><Btn variant="line" onClick={() => setModal(false)}>{t.cancel}</Btn><Btn onClick={save}>{t.save}</Btn></>}>
         <Field label={t.subName}><Input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="Mensuel Standard" /></Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label={t.selectPlan}>
-            <Select value={form.planId} onChange={(e) => setF("planId", e.target.value)}>
-              {PLANS.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {p.className}</option>)}
-            </Select>
-          </Field>
-          <Field label={t.classes}>
-            <Select value={form.classId} onChange={(e) => setF("classId", e.target.value)}>
-              <option value="">— {t.all} —</option>
-              {CLASSES.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}
-            </Select>
-          </Field>
-        </div>
+        <Field label={t.selectPlan}>
+          <Select value={form.planId} onChange={(e) => setF("planId", e.target.value)}>
+            {PLANS.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {p.className} · {p.group}</option>)}
+          </Select>
+        </Field>
+        {PLANS.find(p => p.id === form.planId) && (() => {
+          const selectedPlan = PLANS.find(p => p.id === form.planId);
+          return (
+            <div style={{ background: "var(--grad-primary-soft)", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid #EADDFB" }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {selectedPlan.module && <Badge tone="primary">📚 {selectedPlan.module}</Badge>}
+                {selectedPlan.className && <Badge tone="gray">📚 {selectedPlan.className}</Badge>}
+                {selectedPlan.group && <Badge tone="gray">👥 {selectedPlan.group}</Badge>}
+                {selectedPlan.teacher && <Badge tone="gray">👨‍🏫 {selectedPlan.teacher}</Badge>}
+              </div>
+            </div>
+          );
+        })()}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field label={t.nbSeances}><Input type="number" min="1" value={form.seancesCount} onChange={(e) => setF("seancesCount", e.target.value)} /></Field>
           <Field label={t.pricePerSeance}><Input type="number" min="0" value={form.perSeance} onChange={(e) => setF("perSeance", e.target.value)} /></Field>
@@ -1434,20 +1447,26 @@ function SubscriptionsScreen() {
 
       {/* Detail */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name} wide footer={<Btn variant="line" onClick={() => setDetail(null)}>{t.close}</Btn>}>
-        {detail && (() => { const st = statsFor(detail); return (
-          <div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-              <Badge tone={detail.expiryEnabled ? "amber" : "green"}>{detail.expiryEnabled ? `⏳ ${detail.days} ${t.nbDays.toLowerCase()}` : t.untilSeances}</Badge>
-              <Badge tone="primary">📅 {planName(detail.planId)}</Badge>
+        {detail && (() => { 
+          const st = statsFor(detail);
+          const plan = PLANS.find(p => p.id === detail.planId);
+          return (
+            <div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                <Badge tone={detail.expiryEnabled ? "amber" : "green"}>{detail.expiryEnabled ? `⏳ ${detail.days} ${t.nbDays.toLowerCase()}` : t.untilSeances}</Badge>
+                <Badge tone="primary">📅 {planName(detail.planId)}</Badge>
+                {plan?.className && <Badge tone="gray">📚 {plan.className}</Badge>}
+                {plan?.group && <Badge tone="gray">👥 {plan.group}</Badge>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                <Panel title={t.nbSeances}><div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>{detail.seancesCount}</div></Panel>
+                <Panel title={t.pricePerSeance}><div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>{fmt(detail.perSeance)}</div></Panel>
+                <Panel title={t.totalStudentsUsed}><div className="mono" style={{ fontSize: 22, fontWeight: 800, color: "var(--primary-600)" }}>{st.count}</div></Panel>
+                <Panel title={t.totalGain}><div className="mono" style={{ fontSize: 22, fontWeight: 800, color: "var(--green)" }}>{fmt(st.gain)}</div></Panel>
+              </div>
+              <Panel title={t.total}><div className="mono grad-text" style={{ fontSize: 26, fontWeight: 800 }}>{fmt(detail.total)}</div></Panel>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-              <Panel title={t.nbSeances}><div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>{detail.seancesCount}</div></Panel>
-              <Panel title={t.pricePerSeance}><div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>{fmt(detail.perSeance)}</div></Panel>
-              <Panel title={t.totalStudentsUsed}><div className="mono" style={{ fontSize: 22, fontWeight: 800, color: "var(--primary-600)" }}>{st.count}</div></Panel>
-              <Panel title={t.totalGain}><div className="mono" style={{ fontSize: 22, fontWeight: 800, color: "var(--green)" }}>{fmt(st.gain)}</div></Panel>
-            </div>
-            <Panel title={t.total}><div className="mono grad-text" style={{ fontSize: 26, fontWeight: 800 }}>{fmt(detail.total)}</div></Panel>
-          </div>
+          );
         ); })()}
       </Modal>
 
@@ -1735,6 +1754,10 @@ function StudentsScreen({ canPay = true }) {
               <Panel title={t.remaining}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: view.debt > 0 ? "var(--red)" : "var(--green)" }}>{fmt(view.debt)}</div></Panel>
             </div>
             <Panel title={`${t.subscription}: ${view.subType}`}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                {view.className && <Badge tone="gray">📚 {view.className}</Badge>}
+                {view.group && <Badge tone="gray">👥 {view.group}</Badge>}
+              </div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--muted)" }}>
                 <span>{t.seancesLeft}: <b className="mono" style={{ color: "var(--ink)" }}>{view.seancesRemaining ?? "∞"}{view.seancesTotal ? `/${view.seancesTotal}` : ""}</b></span>
                 {view.startDate && <span>{t.startDate}: <b className="mono" style={{ color: "var(--ink)" }}>{view.startDate}</b></span>}
