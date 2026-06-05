@@ -5,14 +5,26 @@
 // ============================================================================
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://flvsycnkozszxblfxqvg.supabase.co";
-const SUPABASE_ANON_KEY =
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://flvsycnkozszxblfxqvg.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ||
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsdnN5Y25rb3pzenhibGZ4cXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzIzMzAsImV4cCI6MjA5NTY0ODMzMH0.xvA1Z4wG4__F0iuHPaqABZqvI9uDK9aqtnPpCYSASGg";
+
+// Log initialization in development
+if (typeof window !== 'undefined') {
+  console.log('🔗 Supabase URL:', SUPABASE_URL);
+  console.log('🔑 Using anon key:', SUPABASE_ANON_KEY ? '✓ configured' : '✗ missing');
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// small helper: throw on error, return data
-const ok = ({ data, error }) => { if (error) throw error; return data; };
+// Enhanced error helper with logging
+const ok = ({ data, error }) => {
+  if (error) {
+    console.error('❌ Supabase query error:', error);
+    throw error;
+  }
+  return data;
+};
 
 export const db = {
   // ---- Auth --------------------------------------------------------------
@@ -228,7 +240,7 @@ export const db = {
       status, recorded_at: new Date().toISOString()
     }, { onConflict: "plan_id,teacher_id,session_date" }).then(ok),
   listTeacherAttendance: (teacherId) =>
-    supabase.from("teacher_attendance").select("*, plans(name,module_id,class_id,start_time,end_time,day_of_week)")
+    supabase.from("teacher_attendance").select("*, plans(name,module_id,class_id,start_time,end_time,days_of_week)")
       .eq("teacher_id", teacherId).order("session_date", { ascending: false }).then(ok),
 
   // ---- Teacher séance records (unpaid/paid tracking) ---------------------

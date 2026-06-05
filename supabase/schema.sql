@@ -434,6 +434,14 @@ select
   (select coalesce(sum(coalesce(base_salary, seance_rate*20)),0) from teachers)
     + (select coalesce(sum(base_salary),0) from staff)             as salaries;
 
+-- Grant view access to anon + authenticated (required for PostgREST) ----------
+grant select on classes_v            to anon, authenticated;
+grant select on students_v           to anon, authenticated;
+grant select on groups_v             to anon, authenticated;
+grant select on plans_v              to anon, authenticated;
+grant select on subscription_stats_v to anon, authenticated;
+grant select on dashboard_totals_v   to anon, authenticated;
+
 -- ----------------------------------------------------------------------------
 -- 6. ROW LEVEL SECURITY
 --    NOTE: With the anon key and no Supabase Auth wired yet, enable permissive
