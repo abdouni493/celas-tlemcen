@@ -2924,167 +2924,256 @@ function AnalyticsScreen() {
   );
 }
 
-// Data Export Panel Component
+// Data Export & Backup Panel
 function DataExportPanel() {
   const t = useT();
+  const globalRefresh = useRefresh();
+  const schoolName = store.SETTINGS?.name || "Académie Noor";
+
+  // Export state
+  const [exportType, setExportType] = useState("students");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
-  const [includeSubscriptions, setIncludeSubscriptions] = useState(true);
-  const [includePayments, setIncludePayments] = useState(true);
+  const [inclSubs, setInclSubs] = useState(true);
+  const [inclPay, setInclPay] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const [exportType, setExportType] = useState("students"); // students, teachers, staff, classes, expenses
+  const [allPayments, setAllPayments] = useState([]);
 
-  const filteredStudents = React.useMemo(() => {
-    let result = [...STUDENTS];
-    
-    // Apply filters
-    if (startDate && endDate) {
-      result = filterStudentsByDateRange(result, startDate, endDate);
-    }
-    if (selectedClass !== "all") {
-      result = filterStudentsByClass(result, selectedClass);
-    }
-    if (selectedStatus !== "all") {
-      result = filterStudentsByStatus(result, selectedStatus);
-    }
-    
-    return result;
+  // Backup/Restore state
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restorePreview, setRestorePreview] = useState(null);
+  const [lastBackup, setLastBackup] = useState(() => localStorage.getItem("lastBackup") || null);
+  const restoreRef = React.useRef(null);
+
+  // Toast
+  const [toast, setToast] = useState(null);
+  const showToast = (msg, type = "ok") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // Load payment history for Excel (sheet 4)
+  useEffect(() => {
+    db.allPayments().then(setAllPayments).catch(() => {});
+  }, []);
+
+  const filteredStudents = useMemo(() => {
+    let r = [...STUDENTS];
+    if (startDate && endDate) r = filterStudentsByDateRange(r, startDate, endDate);
+    if (selectedClass !== "all") r = filterStudentsByClass(r, selectedClass);
+    if (selectedStatus !== "all") r = filterStudentsByStatus(r, selectedStatus);
+    return r;
   }, [startDate, endDate, selectedClass, selectedStatus]);
 
-  const stats = React.useMemo(() => calculateSummaryStats(filteredStudents), [filteredStudents]);
+  const stats = useMemo(() => calculateSummaryStats(filteredStudents), [filteredStudents]);
 
-  const handleExportStudents = async () => {
-    if (filteredStudents.length === 0) {
-      alert(t.noDataSelected);
-      return;
-    }
-    
+  // ---------- Export ----------
+  const handleExport = async () => {
     setExporting(true);
     try {
-      await exportStudentsToExcel(filteredStudents, {
-        startDate,
-        endDate,
-        schoolName: store.SETTINGS?.name || "Académie Noor",
-        includePayments,
-        includeSubscriptions,
-        payments: PAYMENTS || [],
-      });
-      alert(t.exportSuccess + " (" + filteredStudents.length + " " + t.filteredResults + ")");
+      if (exportType === "students") {
+        if (!filteredStudents.length) { showToast(t.noDataSelected, "err"); return; }
+        await exportStudentsToExcel(filteredStudents, {
+          startDate, endDate, schoolName, includePayments: inclPay,
+          includeSubscriptions: inclSubs, payments: inclPay ? allPayments : [],
+        });
+        showToast(`${filteredStudents.length} étudiant(s) exportés ✓`);
+      } else if (exportType === "teachers") {
+        await exportTeachersToExcel(TEACHERS, schoolName);
+        showToast(`${TEACHERS.length} enseignant(s) exportés ✓`);
+      } else if (exportType === "staff") {
+        await exportStaffToExcel(STAFF, schoolName);
+        showToast(`${STAFF.length} membre(s) exportés ✓`);
+      } else if (exportType === "classes") {
+        await exportClassesToExcel(CLASSES, schoolName);
+        showToast(`${CLASSES.length} classe(s) exportées ✓`);
+      } else if (exportType === "expenses") {
+        await exportExpensesToExcel(EXPENSES, schoolName);
+        showToast(`${EXPENSES.length} dépense(s) exportées ✓`);
+      }
     } catch (e) {
-      console.error(e);
-      alert(t.exportError + ": " + e.message);
+      showToast(t.exportError + ": " + e.message, "err");
     } finally {
       setExporting(false);
     }
   };
 
-  const handleExportTeachers = async () => {
-    setExporting(true);
+  const exportCounts = {
+    students: filteredStudents.length,
+    teachers: TEACHERS.length,
+    staff: STAFF.length,
+    classes: CLASSES.length,
+    expenses: EXPENSES.length,
+  };
+
+  // ---------- Backup ----------
+  const handleBackup = async () => {
+    setBackupBusy(true);
     try {
-      await exportTeachersToExcel(TEACHERS, store.SETTINGS?.name || "Académie Noor");
-      alert(t.exportSuccess + " (" + TEACHERS.length + " " + t.teachers + ")");
+      const fetchRaw = (table) => supabase.from(table).select("*").then(({ data }) => data || []);
+      const [settings, modules, classes, groups, teachers, staff, plans, subTypes,
+             students, parents, parentStudents, payments, expenses, expCats, announcements] =
+        await Promise.all([
+          db.getSettings().catch(() => null),
+          fetchRaw("modules"), fetchRaw("classes"), fetchRaw("groups"),
+          fetchRaw("teachers"), fetchRaw("staff"), fetchRaw("plans"),
+          fetchRaw("subscription_types"), fetchRaw("students"),
+          fetchRaw("parents"), fetchRaw("parent_students"), fetchRaw("payments"),
+          fetchRaw("expenses"), fetchRaw("expense_categories"), fetchRaw("announcements"),
+        ]);
+
+      const backup = {
+        version: 2,
+        created_at: new Date().toISOString(),
+        school: schoolName,
+        data: {
+          school_settings: settings ? [settings] : [],
+          modules, classes, groups, teachers, staff, plans,
+          subscription_types: subTypes, students, parents,
+          parent_students: parentStudents, payments, expenses,
+          expense_categories: expCats, announcements,
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${schoolName.replace(/\s+/g, "_")}_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const ts = new Date().toLocaleString("fr-FR");
+      setLastBackup(ts);
+      localStorage.setItem("lastBackup", ts);
+      showToast("Sauvegarde téléchargée avec succès ✓");
     } catch (e) {
-      console.error(e);
-      alert(t.exportError + ": " + e.message);
+      showToast("Erreur sauvegarde: " + e.message, "err");
     } finally {
-      setExporting(false);
+      setBackupBusy(false);
     }
   };
 
-  const handleExportStaff = async () => {
-    setExporting(true);
+  // ---------- Restore ----------
+  const onRestoreFile = (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed?.data) throw new Error("Format invalide");
+        setRestorePreview(parsed);
+      } catch {
+        showToast("Fichier invalide — ce n'est pas un fichier de sauvegarde JSON.", "err");
+        if (restoreRef.current) restoreRef.current.value = "";
+      }
+    };
+    reader.readAsText(f);
+  };
+
+  const handleRestore = async () => {
+    if (!restorePreview?.data) return;
+    if (!window.confirm("Confirmer la restauration ? Les données existantes seront remplacées par le contenu du fichier.")) return;
+    setRestoreBusy(true);
     try {
-      await exportStaffToExcel(STAFF, store.SETTINGS?.name || "Académie Noor");
-      alert(t.exportSuccess + " (" + STAFF.length + " " + t.staff + ")");
+      const d = restorePreview.data;
+      // Insert in FK-safe order
+      const steps = [
+        ["modules", d.modules],
+        ["expense_categories", d.expense_categories],
+        ["subscription_types", d.subscription_types],
+        ["teachers", d.teachers],
+        ["staff", d.staff],
+        ["parents", d.parents],
+        ["classes", d.classes],
+        ["groups", d.groups],
+        ["students", d.students],
+        ["plans", d.plans],
+        ["parent_students", d.parent_students],
+        ["payments", d.payments],
+        ["expenses", d.expenses],
+        ["announcements", d.announcements],
+      ];
+      for (const [table, rows] of steps) {
+        if (rows?.length) {
+          const { error } = await supabase.from(table).upsert(rows, { ignoreDuplicates: false });
+          if (error) throw new Error(`Erreur table ${table}: ${error.message}`);
+        }
+      }
+      if (d.school_settings?.[0]) {
+        await supabase.from("school_settings").upsert(d.school_settings[0]);
+      }
+      await globalRefresh();
+      setRestorePreview(null);
+      if (restoreRef.current) restoreRef.current.value = "";
+      showToast("Données restaurées avec succès ✓");
     } catch (e) {
-      console.error(e);
-      alert(t.exportError + ": " + e.message);
+      showToast("Erreur restauration: " + e.message, "err");
     } finally {
-      setExporting(false);
+      setRestoreBusy(false);
     }
   };
 
-  const handleExportClasses = async () => {
-    setExporting(true);
-    try {
-      await exportClassesToExcel(CLASSES, store.SETTINGS?.name || "Académie Noor");
-      alert(t.exportSuccess + " (" + CLASSES.length + " " + t.classes + ")");
-    } catch (e) {
-      console.error(e);
-      alert(t.exportError + ": " + e.message);
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleExportExpenses = async () => {
-    setExporting(true);
-    try {
-      await exportExpensesToExcel(EXPENSES, store.SETTINGS?.name || "Académie Noor");
-      alert(t.exportSuccess + " (" + EXPENSES.length + " " + t.expenses + ")");
-    } catch (e) {
-      console.error(e);
-      alert(t.exportError + ": " + e.message);
-    } finally {
-      setExporting(false);
-    }
-  };
+  const EXPORT_TYPES = [
+    { val: "students",  icon: "👥", label: "Étudiants" },
+    { val: "teachers",  icon: "👨‍🏫", label: "Enseignants" },
+    { val: "staff",     icon: "👔", label: "Admin" },
+    { val: "classes",   icon: "🏫", label: "Classes" },
+    { val: "expenses",  icon: "💰", label: "Dépenses" },
+  ];
 
   return (
-    <div>
-      <div style={{ marginBottom: 22 }}>
-        <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t.exportData}</h3>
-        <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0 }}>Exportez toutes les données de votre académie en format Excel avec tous les détails complets.</p>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: "fixed", top: 20, right: 20, zIndex: 9999,
+          background: toast.type === "err" ? "var(--red)" : "var(--green)",
+          color: "#fff", borderRadius: 12, padding: "12px 20px",
+          fontSize: 13.5, fontWeight: 600, boxShadow: "var(--shadow-lift)",
+          maxWidth: 320,
+        }}>
+          {toast.msg}
+        </div>
+      )}
 
-      {/* Export Type Selector */}
-      <Panel title="Sélectionnez le type de données à exporter:" style={{ marginBottom: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10 }}>
-          {[
-            { val: "students", label: "👥 Étudiants", icon: "👥" },
-            { val: "teachers", label: "👨‍🏫 Enseignants", icon: "👨‍🏫" },
-            { val: "staff", label: "👔 Administration", icon: "👔" },
-            { val: "classes", label: "🏫 Classes", icon: "🏫" },
-            { val: "expenses", label: "💰 Dépenses", icon: "💰" },
-          ].map((opt) => (
-            <Btn
-              key={opt.val}
-              onClick={() => setExportType(opt.val)}
-              variant={exportType === opt.val ? "primary" : "line"}
-              style={{
-                padding: "10px 12px",
-                fontSize: 12,
-                textAlign: "center",
-              }}
-            >
-              {opt.label}
-            </Btn>
+      {/* ── SECTION 1 : Export Excel ─────────────────────────── */}
+      <div style={{ marginBottom: 24 }}>
+        <SectionHead icon="📊" title="Export Excel"
+          sub="Téléchargez vos données en format .xlsx" />
+
+        {/* Type tabs */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8, marginBottom: 16 }}>
+          {EXPORT_TYPES.map((opt) => (
+            <button key={opt.val} onClick={() => setExportType(opt.val)} style={{
+              padding: "10px 4px", borderRadius: 10,
+              border: "2px solid " + (exportType === opt.val ? "var(--primary)" : "var(--line)"),
+              background: exportType === opt.val ? "var(--primary-50)" : "#fff",
+              color: exportType === opt.val ? "var(--primary-600)" : "var(--muted)",
+              fontWeight: 600, cursor: "pointer", fontSize: 11,
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+              transition: "all .15s",
+            }}>
+              <span style={{ fontSize: 20 }}>{opt.icon}</span>
+              <span>{opt.label}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums", opacity: .65 }}>{exportCounts[opt.val]}</span>
+            </button>
           ))}
         </div>
-      </Panel>
 
-      {/* Students Export Options */}
-      {exportType === "students" && (
-        <>
-          <Panel title={t.filterBy + ":"} style={{ marginBottom: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-              <Field label={t.from}>
-                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-              </Field>
-              <Field label={t.to}>
-                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-              </Field>
-            </div>
-            
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {/* Students filters */}
+        {exportType === "students" && (
+          <div style={{ background: "var(--bg)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <Field label={t.from}><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
+              <Field label={t.to}><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
               <Field label={t.filterByClass}>
                 <Select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
                   <option value="all">{t.allClasses}</option>
-                  {CLASSES.map((c) => (
-                    <option key={c.id} value={c.id}>{c.year || c.name}</option>
-                  ))}
+                  {CLASSES.map((c) => <option key={c.id} value={c.id}>{c.year || c.name}</option>)}
                 </Select>
               </Field>
               <Field label={t.filterByStatus}>
@@ -3096,85 +3185,146 @@ function DataExportPanel() {
                 </Select>
               </Field>
             </div>
-
-            <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
-                <input type="checkbox" checked={includeSubscriptions} onChange={(e) => setIncludeSubscriptions(e.target.checked)} style={{ cursor: "pointer" }} />
-                <span>{t.includeSubscriptions}</span>
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
-                <input type="checkbox" checked={includePayments} onChange={(e) => setIncludePayments(e.target.checked)} style={{ cursor: "pointer" }} />
-                <span>{t.includePayments}</span>
-              </label>
+            <div style={{ display: "flex", gap: 18, marginBottom: 14 }}>
+              {[[inclSubs, setInclSubs, t.includeSubscriptions], [inclPay, setInclPay, t.includePayments]].map(([val, set, label], i) => (
+                <label key={i} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                  <input type="checkbox" checked={val} onChange={(e) => set(e.target.checked)} style={{ cursor: "pointer", accentColor: "var(--primary)" }} />
+                  {label}
+                </label>
+              ))}
             </div>
-          </Panel>
-
-          {/* Summary Statistics */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 16 }}>
-            <Panel style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.students}</div>
-              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--primary)" }}>{stats.totalStudents}</div>
-            </Panel>
-            <Panel style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.active}</div>
-              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--green)" }}>{stats.activeStudents}</div>
-            </Panel>
-            <Panel style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>Revenu</div>
-              <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>{fmt(stats.totalRevenue)}</div>
-            </Panel>
-            <Panel style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.paid}</div>
-              <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--green)" }}>{fmt(stats.totalPaid)}</div>
-            </Panel>
-            <Panel style={{ textAlign: "center", padding: 12 }}>
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.debt}</div>
-              <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--red)" }}>{fmt(stats.totalDebt)}</div>
-            </Panel>
+            {/* Stats strip */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
+              {[
+                { l: t.students, v: stats.totalStudents, c: "var(--primary)" },
+                { l: t.active,   v: stats.activeStudents, c: "var(--green)" },
+                { l: "Expiré",   v: stats.expiredStudents, c: "var(--amber)" },
+                { l: "Payé",     v: fmt(stats.totalPaid),  c: "var(--green)" },
+                { l: "Dette",    v: fmt(stats.totalDebt),  c: "var(--red)" },
+              ].map((s) => (
+                <div key={s.l} style={{ background: "#fff", borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 2 }}>{s.l}</div>
+                  <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: s.c }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          <Btn onClick={handleExportStudents} disabled={exporting || filteredStudents.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
-            {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Étudiants (" + filteredStudents.length + ")"}
-          </Btn>
-        </>
-      )}
-
-      {/* Teachers Export */}
-      {exportType === "teachers" && (
-        <Btn onClick={handleExportTeachers} disabled={exporting || TEACHERS.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
-          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Enseignants (" + TEACHERS.length + ")"}
+        <Btn
+          onClick={handleExport}
+          disabled={exporting || exportCounts[exportType] === 0}
+          style={{ width: "100%", padding: "12px 0" }}
+        >
+          {exporting
+            ? "⏳ Export en cours…"
+            : `📥 Exporter ${EXPORT_TYPES.find(x => x.val === exportType)?.label} (${exportCounts[exportType]})`}
         </Btn>
-      )}
+      </div>
 
-      {/* Staff Export */}
-      {exportType === "staff" && (
-        <Btn onClick={handleExportStaff} disabled={exporting || STAFF.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
-          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter l'Administration (" + STAFF.length + ")"}
+      <div style={{ height: 1, background: "var(--line)", margin: "0 0 24px" }} />
+
+      {/* ── SECTION 2 : Sauvegarde ───────────────────────────── */}
+      <div style={{ marginBottom: 24 }}>
+        <SectionHead icon="💾" title="Sauvegarde complète"
+          sub={lastBackup ? `Dernière sauvegarde : ${lastBackup}` : "Aucune sauvegarde locale enregistrée"}
+          iconBg="linear-gradient(135deg,#059669,#34D399)" />
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 14px" }}>
+          Télécharge toutes vos données (étudiants, enseignants, cours, paiements…) dans un fichier JSON chiffré, réutilisable pour restauration.
+        </p>
+        <Btn variant="soft" onClick={handleBackup} disabled={backupBusy} style={{ width: "100%", padding: "12px 0" }}>
+          {backupBusy ? "⏳ Création de la sauvegarde…" : "⬇️ Télécharger la sauvegarde"}
         </Btn>
-      )}
+      </div>
 
-      {/* Classes Export */}
-      {exportType === "classes" && (
-        <Btn onClick={handleExportClasses} disabled={exporting || CLASSES.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
-          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Classes (" + CLASSES.length + ")"}
-        </Btn>
-      )}
+      <div style={{ height: 1, background: "var(--line)", margin: "0 0 24px" }} />
 
-      {/* Expenses Export */}
-      {exportType === "expenses" && (
-        <Btn onClick={handleExportExpenses} disabled={exporting || EXPENSES.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
-          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Dépenses (" + EXPENSES.length + ")"}
-        </Btn>
-      )}
+      {/* ── SECTION 3 : Restauration ─────────────────────────── */}
+      <div>
+        <SectionHead icon="♻️" title="Restaurer les données"
+          sub="Importez un fichier de sauvegarde JSON"
+          iconBg="linear-gradient(135deg,#D97706,#FBBF24)" />
 
-      {/* Backup & Restore */}
-      <Panel title={t.backup} style={{ borderTop: "1px solid var(--line)", marginTop: 16, paddingTop: 16 }}>
-        <p style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>Dernière sauvegarde: 2026-06-05 14:32</p>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="soft" style={{ flex: 1 }}>⬇️ {t.backup}</Btn>
-          <Btn variant="line" style={{ flex: 1 }}>⬆️ {t.restore}</Btn>
-        </div>
-      </Panel>
+        <input ref={restoreRef} type="file" accept=".json,application/json" onChange={onRestoreFile} style={{ display: "none" }} />
+
+        {!restorePreview ? (
+          <button
+            onClick={() => restoreRef.current?.click()}
+            style={{
+              width: "100%", padding: "28px 16px", borderRadius: 12,
+              border: "2px dashed var(--line)", background: "var(--bg)",
+              cursor: "pointer", textAlign: "center", color: "var(--muted)",
+              fontSize: 13, transition: "border-color .15s, background .15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "var(--primary-50)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.background = "var(--bg)"; }}
+          >
+            <div style={{ fontSize: 30, marginBottom: 8 }}>📂</div>
+            <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Cliquez pour choisir un fichier</div>
+            <div style={{ fontSize: 12 }}>Fichier .json de sauvegarde Académie Noor</div>
+          </button>
+        ) : (
+          <div>
+            <div style={{
+              borderRadius: 12, padding: 16, marginBottom: 14,
+              background: "var(--amber-bg)", border: "1px solid #FCD34D",
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: "#92400E", marginBottom: 10 }}>
+                📦 Aperçu de la sauvegarde
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--ink)", marginBottom: 12 }}>
+                <strong>{restorePreview.school}</strong>
+                {restorePreview.created_at && (
+                  <span style={{ color: "var(--muted)", marginInlineStart: 8 }}>
+                    · {new Date(restorePreview.created_at).toLocaleString("fr-FR")}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(90px,1fr))", gap: 8 }}>
+                {[
+                  ["Étudiants",   restorePreview.data?.students?.length ?? 0],
+                  ["Enseignants", restorePreview.data?.teachers?.length ?? 0],
+                  ["Classes",     restorePreview.data?.classes?.length ?? 0],
+                  ["Paiements",   restorePreview.data?.payments?.length ?? 0],
+                  ["Dépenses",    restorePreview.data?.expenses?.length ?? 0],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{k}</div>
+                    <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="line" style={{ flex: 1 }}
+                onClick={() => { setRestorePreview(null); if (restoreRef.current) restoreRef.current.value = ""; }}>
+                ✕ Annuler
+              </Btn>
+              <Btn disabled={restoreBusy} style={{ flex: 2, background: "#D97706", borderColor: "#D97706" }}
+                onClick={handleRestore}>
+                {restoreBusy ? "⏳ Restauration en cours…" : "♻️ Confirmer la restauration"}
+              </Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Small section header used inside DataExportPanel
+function SectionHead({ icon, title, sub, iconBg }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+      <div style={{
+        width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+        background: iconBg || "var(--grad-primary)",
+        display: "grid", placeItems: "center", fontSize: 19,
+      }}>{icon}</div>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{title}</div>
+        {sub && <div style={{ fontSize: 12, color: "var(--muted)" }}>{sub}</div>}
+      </div>
     </div>
   );
 }
