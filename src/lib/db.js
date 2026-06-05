@@ -5,26 +5,12 @@
 // ============================================================================
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://flvsycnkozszxblfxqvg.supabase.co";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsdnN5Y25rb3pzenhibGZ4cXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzIzMzAsImV4cCI6MjA5NTY0ODMzMH0.xvA1Z4wG4__F0iuHPaqABZqvI9uDK9aqtnPpCYSASGg";
-
-// Log initialization in development
-if (typeof window !== 'undefined') {
-  console.log('🔗 Supabase URL:', SUPABASE_URL);
-  console.log('🔑 Using anon key:', SUPABASE_ANON_KEY ? '✓ configured' : '✗ missing');
-}
+const SUPABASE_URL = "https://flvsycnkozszxblfxqvg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsdnN5Y25rb3pzenhibGZ4cXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNzIzMzAsImV4cCI6MjA5NTY0ODMzMH0.xvA1Z4wG4__F0iuHPaqABZqvI9uDK9aqtnPpCYSASGg";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Enhanced error helper with logging
-const ok = ({ data, error }) => {
-  if (error) {
-    console.error('❌ Supabase query error:', error);
-    throw error;
-  }
-  return data;
-};
+const ok = ({ data, error }) => { if (error) throw error; return data; };
 
 export const db = {
   // ---- Auth --------------------------------------------------------------

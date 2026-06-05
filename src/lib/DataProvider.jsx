@@ -33,12 +33,16 @@ const mapStaff = (s) => ({
   phone: s.phone, email: s.email, baseSalary: s.base_salary, unpaidMonths: s.unpaid_months || 0,
   acomptes: s.acomptes || [], absences: s.absences || [],
 });
-const mapPlan = (p) => ({
-  id: p.id, name: p.name || p.module_name, classId: p.class_id, className: p.class_label,
-  groupId: p.group_id, group: p.group_name, module: p.module_name,
-  day: p.day_of_week, startTime: (p.start_time || "").slice(0, 5), endTime: (p.end_time || "").slice(0, 5),
-  teacherId: p.teacher_id, teacher: p.teacher_name, students: p.students_count ?? 0, gains: 0, debt: 0,
-});
+const mapPlan = (p) => {
+  const days = Array.isArray(p.days_of_week) ? p.days_of_week : [];
+  return {
+    id: p.id, name: p.name || p.module_name, classId: p.class_id, className: p.class_label,
+    groupId: p.group_id, group: p.group_name, module: p.module_name,
+    days, day: days[0] ?? 0,
+    startTime: (p.start_time || "").slice(0, 5), endTime: (p.end_time || "").slice(0, 5),
+    teacherId: p.teacher_id, teacher: p.teacher_name, students: p.students_count ?? 0, gains: 0, debt: 0,
+  };
+};
 const mapSub = (s, stats) => ({
   id: s.id, name: s.name, planId: s.plan_id, days: s.days, seancesCount: s.seances_count,
   perSeance: s.per_seance, total: s.total, expiryEnabled: s.expiry_enabled,
