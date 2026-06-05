@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { store, loadAll, addDays, classLabel, reloadStudents, reloadClasses, reloadGroups, reloadPlans, reloadSubTypes, reloadTeachers, reloadStaff, reloadExpenses, reloadParents, reloadAnnouncements, reloadTotals } from "./lib/store";
 import { db, supabase } from "./lib/db";
-import { filterStudentsByDateRange, filterStudentsByClass, filterStudentsByStatus, calculateSummaryStats, exportStudentsToExcel } from "./lib/excelExport";
+import { filterStudentsByDateRange, filterStudentsByClass, filterStudentsByStatus, calculateSummaryStats, exportStudentsToExcel, exportTeachersToExcel, exportStaffToExcel, exportClassesToExcel, exportAttendanceToExcel, exportExpensesToExcel } from "./lib/excelExport";
 
 /* ============================================================================
    PRIVATE SCHOOL MANAGEMENT SYSTEM
@@ -151,7 +151,7 @@ const I18N = {
     searchStudent: "Rechercher un étudiant", selectChildren: "Sélectionner les enfants", selected: "sélectionné(s)",
     newCategory: "Nouvelle catégorie", categoryName: "Nom de la catégorie", addCategoryTitle: "Ajouter une catégorie",
     teacherPlans: "Séances de l'enseignant", assignedPlans: "Séances assignées", noPlans: "Aucune séance assignée",
-    viewAnalytics: "Voir les analyses", analytics: "Analyses", detailedReports: "Rapports détaillés",
+    viewAnalytics: "Voir les analyses", detailedReports: "Rapports détaillés",
     clickForDetails: "Cliquez pour les détails", periodHistory: "Historique de la période", benefits: "Bénéfices",
     chooseLogo: "Choisir un logo", uploadFromDevice: "Importer depuis l'appareil", logoPreview: "Aperçu du logo",
     debtAlerts: "Alertes de dettes", paymentAlerts: "Alertes de paiements", expenseAlerts: "Alertes de dépenses",
@@ -161,7 +161,7 @@ const I18N = {
     presences: "Présences", retards: "Retards", subscriptionsHist: "Historique abonnements", paymentsHist: "Historique paiements",
     teacherOf: "Enseignant", childDetails: "Détails de l'enfant", fromAdmin: "De l'administration", messageReceived: "Message reçu",
     grossRevenue: "Revenu brut", netBenefit: "Bénéfice net", revenueBreakdown: "Répartition des revenus", expenseBreakdown: "Répartition des dépenses",
-    byClass: "Par classe", byTeacher: "Par enseignant", byMonth: "Par mois", growth: "Croissance", retention: "Rétention",
+    byClass: "Par classe", byTeacher: "Par enseignant", byMonth: "Par mois", growth: "Croissance",
     avgRevenue: "Revenu moyen", collectionRate: "Taux de recouvrement", totalCategories: "catégories",
     adminAttendance: "Gestion des présences", todaySchedule: "Programme du jour", teacherPresence: "Présence enseignant",
     markPresence2: "Marquer la présence", seancesPay: "Paiement séances", monthlyPay: "Paiement mensuel",
@@ -252,7 +252,7 @@ const I18N = {
     searchStudent: "البحث عن طالب", selectChildren: "اختر الأبناء", selected: "محدد",
     newCategory: "فئة جديدة", categoryName: "اسم الفئة", addCategoryTitle: "إضافة فئة",
     teacherPlans: "حصص المعلم", assignedPlans: "الحصص المسندة", noPlans: "لا توجد حصص مسندة",
-    viewAnalytics: "عرض التحليلات", analytics: "التحليلات", detailedReports: "تقارير مفصلة",
+    viewAnalytics: "عرض التحليلات", detailedReports: "تقارير مفصلة",
     clickForDetails: "اضغط للتفاصيل", periodHistory: "سجل الفترة", benefits: "الأرباح",
     chooseLogo: "اختر شعاراً", uploadFromDevice: "تحميل من الجهاز", logoPreview: "معاينة الشعار",
     debtAlerts: "تنبيهات الديون", paymentAlerts: "تنبيهات المدفوعات", expenseAlerts: "تنبيهات المصاريف",
@@ -262,7 +262,7 @@ const I18N = {
     presences: "الحضور", retards: "التأخرات", subscriptionsHist: "سجل الاشتراكات", paymentsHist: "سجل المدفوعات",
     teacherOf: "المعلم", childDetails: "تفاصيل الابن", fromAdmin: "من الإدارة", messageReceived: "رسالة واردة",
     grossRevenue: "الإيراد الإجمالي", netBenefit: "صافي الربح", revenueBreakdown: "توزيع الإيرادات", expenseBreakdown: "توزيع المصاريف",
-    byClass: "حسب الفصل", byTeacher: "حسب المعلم", byMonth: "حسب الشهر", growth: "النمو", retention: "الاحتفاظ",
+    byClass: "حسب الفصل", byTeacher: "حسب المعلم", byMonth: "حسب الشهر", growth: "النمو",
     avgRevenue: "متوسط الإيراد", collectionRate: "نسبة التحصيل", totalCategories: "فئات",
     adminAttendance: "إدارة الحضور", todaySchedule: "برنامج اليوم", teacherPresence: "حضور المعلم",
     markPresence2: "تسجيل الحضور", seancesPay: "دفع الحصص", monthlyPay: "الدفع الشهري",
@@ -2934,6 +2934,7 @@ function DataExportPanel() {
   const [includeSubscriptions, setIncludeSubscriptions] = useState(true);
   const [includePayments, setIncludePayments] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [exportType, setExportType] = useState("students"); // students, teachers, staff, classes, expenses
 
   const filteredStudents = React.useMemo(() => {
     let result = [...STUDENTS];
@@ -2954,7 +2955,7 @@ function DataExportPanel() {
 
   const stats = React.useMemo(() => calculateSummaryStats(filteredStudents), [filteredStudents]);
 
-  const handleExport = async () => {
+  const handleExportStudents = async () => {
     if (filteredStudents.length === 0) {
       alert(t.noDataSelected);
       return;
@@ -2968,8 +2969,61 @@ function DataExportPanel() {
         schoolName: store.SETTINGS?.name || "Académie Noor",
         includePayments,
         includeSubscriptions,
+        payments: PAYMENTS || [],
       });
       alert(t.exportSuccess + " (" + filteredStudents.length + " " + t.filteredResults + ")");
+    } catch (e) {
+      console.error(e);
+      alert(t.exportError + ": " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportTeachers = async () => {
+    setExporting(true);
+    try {
+      await exportTeachersToExcel(TEACHERS, store.SETTINGS?.name || "Académie Noor");
+      alert(t.exportSuccess + " (" + TEACHERS.length + " " + t.teachers + ")");
+    } catch (e) {
+      console.error(e);
+      alert(t.exportError + ": " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportStaff = async () => {
+    setExporting(true);
+    try {
+      await exportStaffToExcel(STAFF, store.SETTINGS?.name || "Académie Noor");
+      alert(t.exportSuccess + " (" + STAFF.length + " " + t.staff + ")");
+    } catch (e) {
+      console.error(e);
+      alert(t.exportError + ": " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportClasses = async () => {
+    setExporting(true);
+    try {
+      await exportClassesToExcel(CLASSES, store.SETTINGS?.name || "Académie Noor");
+      alert(t.exportSuccess + " (" + CLASSES.length + " " + t.classes + ")");
+    } catch (e) {
+      console.error(e);
+      alert(t.exportError + ": " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportExpenses = async () => {
+    setExporting(true);
+    try {
+      await exportExpensesToExcel(EXPENSES, store.SETTINGS?.name || "Académie Noor");
+      alert(t.exportSuccess + " (" + EXPENSES.length + " " + t.expenses + ")");
     } catch (e) {
       console.error(e);
       alert(t.exportError + ": " + e.message);
@@ -2982,67 +3036,139 @@ function DataExportPanel() {
     <div>
       <div style={{ marginBottom: 22 }}>
         <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t.exportData}</h3>
-        <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0 }}>Filtrez et exportez les données des étudiants en format Excel avec tous les détails des forfaits et paiements.</p>
+        <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0 }}>Exportez toutes les données de votre académie en format Excel avec tous les détails complets.</p>
       </div>
 
-      {/* Filter Section */}
-      <Panel title={t.filterBy + ":"} style={{ marginBottom: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-          <Field label={t.from}>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </Field>
-          <Field label={t.to}>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </Field>
-        </div>
-        
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Field label={t.filterByClass}>
-            <Select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
-              <option value="all">{t.allClasses}</option>
-              {CLASSES.map((c) => (
-                <option key={c.id} value={c.id}>{c.year || c.name}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t.filterByStatus}>
-            <Select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
-              <option value="all">{t.allStatuses}</option>
-              <option value="ACTIVE">{t.active}</option>
-              <option value="EXPIRED">{t.expired}</option>
-              <option value="SUSPENDED">Suspendu</option>
-            </Select>
-          </Field>
-        </div>
-
-        <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
-            <input type="checkbox" checked={includeSubscriptions} onChange={(e) => setIncludeSubscriptions(e.target.checked)} style={{ cursor: "pointer" }} />
-            <span>{t.includeSubscriptions}</span>
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
-            <input type="checkbox" checked={includePayments} onChange={(e) => setIncludePayments(e.target.checked)} style={{ cursor: "pointer" }} />
-            <span>{t.includePayments}</span>
-          </label>
+      {/* Export Type Selector */}
+      <Panel title="Sélectionnez le type de données à exporter:" style={{ marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10 }}>
+          {[
+            { val: "students", label: "👥 Étudiants", icon: "👥" },
+            { val: "teachers", label: "👨‍🏫 Enseignants", icon: "👨‍🏫" },
+            { val: "staff", label: "👔 Administration", icon: "👔" },
+            { val: "classes", label: "🏫 Classes", icon: "🏫" },
+            { val: "expenses", label: "💰 Dépenses", icon: "💰" },
+          ].map((opt) => (
+            <Btn
+              key={opt.val}
+              onClick={() => setExportType(opt.val)}
+              variant={exportType === opt.val ? "primary" : "line"}
+              style={{
+                padding: "10px 12px",
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              {opt.label}
+            </Btn>
+          ))}
         </div>
       </Panel>
 
-      {/* Summary Statistics */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 16 }}>
-        <StatCard label={t.students} value={stats.totalStudents} icon="👥" tone="primary" />
-        <StatCard label={t.active} value={stats.activeStudents} icon="✅" tone="green" />
-        <StatCard label={t.totalRevenue} value={stats.totalRevenue} icon="💰" tone="amber" money />
-        <StatCard label={t.paid} value={stats.totalPaid} icon="📊" tone="sky" money />
-        <StatCard label={t.debt} value={stats.totalDebt} icon="⚠️" tone="red" money />
-      </div>
+      {/* Students Export Options */}
+      {exportType === "students" && (
+        <>
+          <Panel title={t.filterBy + ":"} style={{ marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+              <Field label={t.from}>
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              </Field>
+              <Field label={t.to}>
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              </Field>
+            </div>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label={t.filterByClass}>
+                <Select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
+                  <option value="all">{t.allClasses}</option>
+                  {CLASSES.map((c) => (
+                    <option key={c.id} value={c.id}>{c.year || c.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t.filterByStatus}>
+                <Select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                  <option value="all">{t.allStatuses}</option>
+                  <option value="ACTIVE">{t.active}</option>
+                  <option value="EXPIRED">{t.expired}</option>
+                  <option value="SUSPENDED">Suspendu</option>
+                </Select>
+              </Field>
+            </div>
 
-      {/* Export Button */}
-      <Btn onClick={handleExport} disabled={exporting || filteredStudents.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
-        {exporting ? "⏳ " + t.export + "…" : "📥 " + t.exportToExcel}
-      </Btn>
+            <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
+                <input type="checkbox" checked={includeSubscriptions} onChange={(e) => setIncludeSubscriptions(e.target.checked)} style={{ cursor: "pointer" }} />
+                <span>{t.includeSubscriptions}</span>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
+                <input type="checkbox" checked={includePayments} onChange={(e) => setIncludePayments(e.target.checked)} style={{ cursor: "pointer" }} />
+                <span>{t.includePayments}</span>
+              </label>
+            </div>
+          </Panel>
+
+          {/* Summary Statistics */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 16 }}>
+            <Panel style={{ textAlign: "center", padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.students}</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--primary)" }}>{stats.totalStudents}</div>
+            </Panel>
+            <Panel style={{ textAlign: "center", padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.active}</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--green)" }}>{stats.activeStudents}</div>
+            </Panel>
+            <Panel style={{ textAlign: "center", padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>Revenu</div>
+              <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>{fmt(stats.totalRevenue)}</div>
+            </Panel>
+            <Panel style={{ textAlign: "center", padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.paid}</div>
+              <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--green)" }}>{fmt(stats.totalPaid)}</div>
+            </Panel>
+            <Panel style={{ textAlign: "center", padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>{t.debt}</div>
+              <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--red)" }}>{fmt(stats.totalDebt)}</div>
+            </Panel>
+          </div>
+
+          <Btn onClick={handleExportStudents} disabled={exporting || filteredStudents.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
+            {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Étudiants (" + filteredStudents.length + ")"}
+          </Btn>
+        </>
+      )}
+
+      {/* Teachers Export */}
+      {exportType === "teachers" && (
+        <Btn onClick={handleExportTeachers} disabled={exporting || TEACHERS.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
+          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Enseignants (" + TEACHERS.length + ")"}
+        </Btn>
+      )}
+
+      {/* Staff Export */}
+      {exportType === "staff" && (
+        <Btn onClick={handleExportStaff} disabled={exporting || STAFF.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
+          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter l'Administration (" + STAFF.length + ")"}
+        </Btn>
+      )}
+
+      {/* Classes Export */}
+      {exportType === "classes" && (
+        <Btn onClick={handleExportClasses} disabled={exporting || CLASSES.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
+          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Classes (" + CLASSES.length + ")"}
+        </Btn>
+      )}
+
+      {/* Expenses Export */}
+      {exportType === "expenses" && (
+        <Btn onClick={handleExportExpenses} disabled={exporting || EXPENSES.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
+          {exporting ? "⏳ " + t.export + "…" : "📥 Exporter les Dépenses (" + EXPENSES.length + ")"}
+        </Btn>
+      )}
 
       {/* Backup & Restore */}
-      <Panel title={t.backup} style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+      <Panel title={t.backup} style={{ borderTop: "1px solid var(--line)", marginTop: 16, paddingTop: 16 }}>
         <p style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>Dernière sauvegarde: 2026-06-05 14:32</p>
         <div style={{ display: "flex", gap: 10 }}>
           <Btn variant="soft" style={{ flex: 1 }}>⬇️ {t.backup}</Btn>

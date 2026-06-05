@@ -273,6 +273,17 @@ export const db = {
     supabase.from("students_v").select("*").order("created_at").then(ok),
 
   /**
+   * Get students with payment history
+   */
+  getStudentsWithPayments: async () => {
+    const students = await supabase.from("students_v").select("*").then(ok);
+    const payments = await supabase.from("payments")
+      .select("*, students(first_name,last_name,id_card)")
+      .order("paid_at", { ascending: false }).then(ok);
+    return { students, payments };
+  },
+
+  /**
    * Get payments for multiple students (for export)
    */
   getPaymentsForExport: async (startDate, endDate) => {
@@ -303,4 +314,32 @@ export const db = {
     }
     return query.then(ok);
   },
+
+  /**
+   * Get teachers with salary details
+   */
+  getTeachersForExport: () =>
+    supabase.from("teachers").select("*").order("created_at").then(ok),
+
+  /**
+   * Get staff with salary details
+   */
+  getStaffForExport: () =>
+    supabase.from("staff").select("*").order("created_at").then(ok),
+
+  /**
+   * Get expenses for export
+   */
+  getExpensesForExport: async (startDate, endDate) => {
+    let query = supabase.from("expenses").select("*");
+    if (startDate) query = query.gte("spent_at", startDate);
+    if (endDate) query = query.lte("spent_at", endDate);
+    return query.order("spent_at", { ascending: false }).then(ok);
+  },
+
+  /**
+   * Get all classes with student counts
+   */
+  getClassesForExport: () =>
+    supabase.from("classes_v").select("*").order("created_at").then(ok),
 };
