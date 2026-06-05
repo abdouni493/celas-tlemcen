@@ -73,7 +73,11 @@ export const db = {
   addModule: (name, name_ar) => supabase.from("modules").insert({ name, name_ar }).select().single().then(ok),
 
   // ---- Classes -----------------------------------------------------------
-  listClasses: () => supabase.from("classes_v").select("*").order("created_at").then(ok),
+  listClasses: async () => {
+    const { data, error } = await supabase.from("classes_v").select("*").order("created_at");
+    if (error) return supabase.from("classes").select("*").order("created_at").then(ok);
+    return data;
+  },
   addClass: (row) => supabase.from("classes").insert(row).select().single().then(ok),
   updateClass: (id, patch) => supabase.from("classes").update(patch).eq("id", id).select().single().then(ok),
   deleteClass: (id) => supabase.from("classes").delete().eq("id", id).then(ok),

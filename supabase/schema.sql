@@ -361,13 +361,21 @@ end $$;
 -- 5. VIEWS — convenient derived data
 -- ----------------------------------------------------------------------------
 
+-- Classes with student and group counts -------------------------------------
+create or replace view classes_v as
+select
+  c.*,
+  (select count(*) from students s where s.class_id = c.id) as students_count,
+  (select count(*) from groups  g where g.class_id = c.id)  as groups_count
+from classes c;
+
 -- Students with derived debt + class/sub labels ------------------------------
 create or replace view students_v as
 select
   s.*,
   (s.final_price - s.paid)                                   as debt,
   case
-    when c.type = 'FORMATION' then coalesce(c.name,'') || ' · ' || coalesce(c.level,'')
+    when c.type = 'FORMATION' then coalesce(c.name,'') || ' · ' || coalesce(c.year,'')
     else coalesce(c.level::text,'') || ' ' || coalesce(c.year,'')
   end                                                        as class_label,
   c.type                                                     as class_type,
@@ -393,7 +401,7 @@ select
   (t.first_name || ' ' || t.last_name)                       as teacher_name,
   g.name                                                     as group_name,
   case
-    when c.type = 'FORMATION' then coalesce(c.name,'') || ' · ' || coalesce(c.level,'')
+    when c.type = 'FORMATION' then coalesce(c.name,'') || ' · ' || coalesce(c.year,'')
     else coalesce(c.level::text,'') || ' ' || coalesce(c.year,'')
   end                                                        as class_label,
   (select count(*) from students s where s.class_id = p.class_id) as students_count

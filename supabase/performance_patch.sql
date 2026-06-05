@@ -23,7 +23,7 @@ select
   (t.first_name || ' ' || t.last_name)                       as teacher_name,
   g.name                                                     as group_name,
   case
-    when c.type = 'FORMATION' then coalesce(c.name,'') || ' · ' || coalesce(c.level,'')
+    when c.type = 'FORMATION' then coalesce(c.name,'') || ' · ' || coalesce(c.year,'')
     else coalesce(c.level::text,'') || ' ' || coalesce(c.year,'')
   end                                                        as class_label,
   (select count(*) from students s where s.class_id = p.class_id) as students_count

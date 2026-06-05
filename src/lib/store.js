@@ -35,7 +35,7 @@ export function addDays(dateStr, days) {
 }
 export function classLabel(c) {
   if (!c) return "";
-  if (c.type === "FORMATION") return `${c.name || ""} · ${c.level || ""}`;
+  if (c.type === "FORMATION") return [c.name, c.year].filter(Boolean).join(" · ");
   const lv = { PRIMARY: "Primaire", CEM: "CEM", LYCEE: "Lycée", OTHER: "" }[c.level] || "";
   return `${lv} ${c.year || ""}`.trim();
 }

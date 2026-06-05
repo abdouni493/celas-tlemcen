@@ -907,7 +907,7 @@ function ClassesScreen() {
   };
   const save = async () => {
     try {
-      await db.addClass({ type: ctype, name: ctype === "FORMATION" ? form.name : null, level: form.level, year: ctype === "COURSES" ? form.year : null, description: form.description });
+      await db.addClass({ type: ctype, name: ctype === "FORMATION" ? form.name : null, level: ctype === "FORMATION" ? "OTHER" : form.level, year: ctype === "FORMATION" ? form.level : form.year, description: form.description });
       await doRefresh(); setModal(false);
     } catch (e) { alert(e.message); }
   };
@@ -955,7 +955,7 @@ function ClassesScreen() {
         <Field label={t.type}>
           <div style={{ display: "flex", gap: 10 }}>
             {[["COURSES", t.courses], ["FORMATION", t.formation]].map(([v, l]) => (
-              <button key={v} onClick={() => setCtype(v)} style={{ flex: 1, padding: "12px", borderRadius: 11, border: "1px solid " + (ctype === v ? "var(--primary)" : "var(--line)"), background: ctype === v ? "var(--primary-50)" : "#fff", color: ctype === v ? "var(--primary-600)" : "var(--muted)", fontWeight: 700, cursor: "pointer" }}>{l}</button>
+              <button key={v} onClick={() => { setCtype(v); setF("level", v === "FORMATION" ? (formationLevels[0] || "A1") : "LYCEE"); }} style={{ flex: 1, padding: "12px", borderRadius: 11, border: "1px solid " + (ctype === v ? "var(--primary)" : "var(--line)"), background: ctype === v ? "var(--primary-50)" : "#fff", color: ctype === v ? "var(--primary-600)" : "var(--muted)", fontWeight: 700, cursor: "pointer" }}>{l}</button>
             ))}
           </div>
         </Field>
