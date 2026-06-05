@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { store, loadAll, addDays, classLabel, reloadStudents, reloadClasses, reloadGroups, reloadPlans, reloadSubTypes, reloadTeachers, reloadStaff, reloadExpenses, reloadParents, reloadAnnouncements, reloadTotals } from "./lib/store";
 import { db, supabase } from "./lib/db";
+import { filterStudentsByDateRange, filterStudentsByClass, filterStudentsByStatus, calculateSummaryStats, exportStudentsToExcel } from "./lib/excelExport";
 
 /* ============================================================================
    PRIVATE SCHOOL MANAGEMENT SYSTEM
@@ -154,9 +155,8 @@ const I18N = {
     clickForDetails: "Cliquez pour les détails", periodHistory: "Historique de la période", benefits: "Bénéfices",
     chooseLogo: "Choisir un logo", uploadFromDevice: "Importer depuis l'appareil", logoPreview: "Aperçu du logo",
     debtAlerts: "Alertes de dettes", paymentAlerts: "Alertes de paiements", expenseAlerts: "Alertes de dépenses",
-    markPresent: "Marquer présent", markAbsent: "Marquer absent", markLate: "Marquer en retard", late: "En retard",
     debtSeance: "Séance à crédit", debtSeanceUsed: "Crédit déjà utilisé", noSeancesLeft: "Aucune séance restante",
-    grantDebtSeance: "Accorder une séance à crédit", lateNotified: "Retard signalé au parent", present: "Présent", absent: "Absent",
+    grantDebtSeance: "Accorder une séance à crédit", lateNotified: "Retard signalé au parent",
     allStudents: "Tous les étudiants", seeAllStudents: "Voir tous les étudiants", studentsInClass: "Étudiants de la classe",
     presences: "Présences", retards: "Retards", subscriptionsHist: "Historique abonnements", paymentsHist: "Historique paiements",
     teacherOf: "Enseignant", childDetails: "Détails de l'enfant", fromAdmin: "De l'administration", messageReceived: "Message reçu",
@@ -174,6 +174,13 @@ const I18N = {
     autoCalc: "Calculé automatiquement", finalTotal: "Total final", selectAll: "Tout sélectionner",
     newLevel: "Nouveau niveau", teacherPayAlerts: "Salaires en attente", unpaidSeancesAlert: "Séances non payées",
     recordedAt: "Enregistré à", recordedBy: "Enregistré par",
+    // Export & Data Management
+    exportData: "Exporter les données", exportToExcel: "Exporter en Excel", dateRange: "Plage de dates",
+    filterByClass: "Filtrer par classe", filterByStatus: "Filtrer par statut",
+    allStatuses: "Tous les statuts", includeSubscriptions: "Inclure les forfaits", includePayments: "Inclure les paiements",
+    exportStudents: "Exporter les étudiants", exportAttendance: "Exporter les présences", lastBackup: "Dernière sauvegarde",
+    noDataSelected: "Sélectionnez au moins un filtre", exportSuccess: "Données exportées avec succès",
+    exportError: "Erreur lors de l'export", filteredResults: "résultats filtrés",
     roles: { ADMIN: "Administrateur", STAFF: "Administration", TEACHER: "Enseignant", STUDENT: "Étudiant", PARENT: "Parent" },
     days: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
     months: ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"],
@@ -249,9 +256,8 @@ const I18N = {
     clickForDetails: "اضغط للتفاصيل", periodHistory: "سجل الفترة", benefits: "الأرباح",
     chooseLogo: "اختر شعاراً", uploadFromDevice: "تحميل من الجهاز", logoPreview: "معاينة الشعار",
     debtAlerts: "تنبيهات الديون", paymentAlerts: "تنبيهات المدفوعات", expenseAlerts: "تنبيهات المصاريف",
-    markPresent: "تسجيل حضور", markAbsent: "تسجيل غياب", markLate: "تسجيل تأخر", late: "متأخر",
     debtSeance: "حصة بالدين", debtSeanceUsed: "الدين مستخدم", noSeancesLeft: "لا حصص متبقية",
-    grantDebtSeance: "منح حصة بالدين", lateNotified: "تم إبلاغ ولي الأمر بالتأخر", present: "حاضر", absent: "غائب",
+    grantDebtSeance: "منح حصة بالدين", lateNotified: "تم إبلاغ ولي الأمر بالتأخر",
     allStudents: "كل الطلاب", seeAllStudents: "عرض كل الطلاب", studentsInClass: "طلاب الفصل",
     presences: "الحضور", retards: "التأخرات", subscriptionsHist: "سجل الاشتراكات", paymentsHist: "سجل المدفوعات",
     teacherOf: "المعلم", childDetails: "تفاصيل الابن", fromAdmin: "من الإدارة", messageReceived: "رسالة واردة",
@@ -269,6 +275,13 @@ const I18N = {
     autoCalc: "محسوب تلقائياً", finalTotal: "المجموع النهائي", selectAll: "تحديد الكل",
     newLevel: "مستوى جديد", teacherPayAlerts: "رواتب معلقة", unpaidSeancesAlert: "حصص غير مدفوعة",
     recordedAt: "سُجل في", recordedBy: "سُجل بواسطة",
+    // Export & Data Management
+    exportData: "تصدير البيانات", exportToExcel: "تصدير إلى Excel", dateRange: "نطاق التاريخ",
+    filterByClass: "تصفية حسب الفصل", filterByStatus: "تصفية حسب الحالة",
+    allStatuses: "كل الحالات", includeSubscriptions: "تضمين الاشتراكات", includePayments: "تضمين المدفوعات",
+    exportStudents: "تصدير الطلاب", exportAttendance: "تصدير الحضور", lastBackup: "آخر نسخة احتياطية",
+    noDataSelected: "حدد مرشح واحد على الأقل", exportSuccess: "تم تصدير البيانات بنجاح",
+    exportError: "خطأ في التصدير", filteredResults: "نتائج مصفاة",
     roles: { ADMIN: "مدير", STAFF: "الإدارة", TEACHER: "معلم", STUDENT: "طالب", PARENT: "ولي أمر" },
     days: ["إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت", "أحد"],
     months: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
@@ -1029,12 +1042,12 @@ function PlannerScreen() {
   const doRefresh = async () => { setPlans(await reloadPlans()); setGroups(await reloadGroups()); setModules([...store.MODULES]); };
 
   // form state
-  const blank = { name: "", classId: CLASSES[0]?.id, module: MODULES[0] || "", groupId: "", teacherId: TEACHERS[0]?.id, day: 0, startTime: "09:00", endTime: "10:30" };
+  const blank = { name: "", classId: CLASSES[0]?.id, module: MODULES[0] || "", groupId: "", teacherId: TEACHERS[0]?.id, days: [0], startTime: "09:00", endTime: "10:30" };
   const [form, setForm] = useState(blank);
   const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const openCreate = () => { setEditing(null); setForm(blank); setPlanType("COURSES"); setClassId(CLASSES[0]?.id); setModal(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ name: p.name, classId: p.classId, module: p.module || MODULES[0] || "", groupId: p.groupId || "", teacherId: p.teacherId, day: p.day, startTime: p.startTime, endTime: p.endTime }); setPlanType(CLASSES.find((c) => c.id === p.classId)?.type || "COURSES"); setClassId(p.classId); setModal(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ name: p.name, classId: p.classId, module: p.module || MODULES[0] || "", groupId: p.groupId || "", teacherId: p.teacherId, days: p.days && p.days.length ? p.days : [p.day ?? 0], startTime: p.startTime, endTime: p.endTime }); setPlanType(CLASSES.find((c) => c.id === p.classId)?.type || "COURSES"); setClassId(p.classId); setModal(true); };
 
   const save = async () => {
     const cls = CLASSES.find((c) => c.id === form.classId);
@@ -1046,7 +1059,7 @@ function PlannerScreen() {
       module_id: moduleObj?.id || null,
       group_id: grp ? grp.id : null,
       teacher_id: form.teacherId,
-      day_of_week: +form.day,
+      days_of_week: form.days || [],
       start_time: form.startTime,
       end_time: form.endTime,
     };
@@ -1110,7 +1123,7 @@ function PlannerScreen() {
             <motion.div key={p.id} layout whileHover={{ y: -5, boxShadow: "var(--shadow-lift)" }} className="gcard" style={{ ...card, padding: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <Badge>{t.days[p.day]}</Badge><Badge tone="gray">{p.startTime}–{p.endTime}</Badge>
+                  {(p.days||[]).map((d,i)=><Badge key={i}>{t.days[d]}</Badge>)}<Badge tone="gray">{p.startTime}–{p.endTime}</Badge>
                 </div>
                 <Menu items={actions(p)} />
               </div>
@@ -1131,7 +1144,7 @@ function PlannerScreen() {
             { h: t.classes, k: "className" },
             { h: t.group, k: "group" },
             { h: t.teacher, k: "teacher" },
-            { h: t.day, render: (p) => t.days[p.day] },
+            { h: t.day, render: (p) => (p.days||[]).map(d=>t.days[d]).join(", ") },
             { h: t.time, render: (p) => `${p.startTime}–${p.endTime}` },
             { h: t.students, render: (p) => <span className="mono">{p.students}</span> },
           ]}
@@ -1166,9 +1179,13 @@ function PlannerScreen() {
             <Btn variant="soft" size="sm" onClick={() => setGrpModal(true)}>➕ {t.newGroup}</Btn>
           </div>
         </Field>
+        <Field label={t.teacher}><Select value={form.teacherId} onChange={(e) => setF("teacherId", e.target.value)}>{TEACHERS.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName}</option>)}</Select></Field>
+        <Field label={t.day}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {t.days.map((d, i) => { const sel = (form.days||[]).includes(i); return <button key={i} type="button" onClick={() => setF("days", sel ? (form.days||[]).filter(x=>x!==i) : [...(form.days||[]),i].sort((a,b)=>a-b))} style={{ padding: "6px 14px", borderRadius: 20, border: "1px solid "+(sel?"var(--primary)":"var(--line)"), background: sel?"var(--primary-50)":"#fff", color: sel?"var(--primary-600)":"var(--muted)", fontWeight: sel?700:400, cursor:"pointer", fontSize:12.5 }}>{d}</button>; })}
+          </div>
+        </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label={t.teacher}><Select value={form.teacherId} onChange={(e) => setF("teacherId", e.target.value)}>{TEACHERS.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName}</option>)}</Select></Field>
-          <Field label={t.day}><Select value={form.day} onChange={(e) => setF("day", e.target.value)}>{t.days.map((d, i) => <option key={i} value={i}>{d}</option>)}</Select></Field>
           <Field label={t.time + " (début)"}><Input type="time" value={form.startTime} onChange={(e) => setF("startTime", e.target.value)} /></Field>
           <Field label={t.time + " (fin)"}><Input type="time" value={form.endTime} onChange={(e) => setF("endTime", e.target.value)} /></Field>
         </div>
@@ -1192,7 +1209,7 @@ function PlannerScreen() {
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? (detail.module || detail.name) : ""} wide footer={<Btn variant="line" onClick={() => setDetail(null)}>{t.close}</Btn>}>
         {detail && <div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-            <Badge>{detail.className}</Badge><Badge tone="gray">{detail.group}</Badge><Badge tone="primary">{t.days[detail.day]} {detail.startTime}–{detail.endTime}</Badge>
+            <Badge>{detail.className}</Badge><Badge tone="gray">{detail.group}</Badge>{(detail.days||[]).map((d,i)=><Badge key={i} tone="primary">{t.days[d]}</Badge>)}<Badge tone="gray">{detail.startTime}–{detail.endTime}</Badge>
           </div>
           <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 0 }}>👨‍🏫 {detail.teacher}</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
@@ -1222,7 +1239,7 @@ function CalendarView({ plans, onClose }) {
   const filtered = plans.filter((p) =>
     (fClass === "all" || p.classId === fClass) &&
     (fTeacher === "all" || p.teacher === fTeacher) &&
-    (fDay === "all" || p.day === +fDay));
+    (fDay === "all" || (p.days||[]).includes(+fDay)));
   const colorFor = (p) => {
     const palette = ["var(--grad-primary)", "var(--grad-green)", "var(--grad-amber)", "var(--grad-sky)", "var(--grad-red)"];
     return palette[(p.teacherId ? parseInt(p.teacherId.replace(/\D/g, "") || "0") : 0) % palette.length];
@@ -1253,7 +1270,7 @@ function CalendarView({ plans, onClose }) {
             <React.Fragment key={s}>
               <div className="mono" style={{ fontSize: 11, color: "var(--faint)", textAlign: "end", paddingTop: 6 }}>{s}</div>
               {days.map((d) => {
-                const cell = filtered.filter((p) => p.day === d && p.startTime.slice(0, 2) === s.slice(0, 2));
+                const cell = filtered.filter((p) => (p.days||[]).includes(d) && p.startTime.slice(0, 2) === s.slice(0, 2));
                 return (
                   <div key={d} style={{ minHeight: 44, borderRadius: 8, background: cell.length ? "transparent" : "#FAF8FE", border: "1px dashed " + (cell.length ? "transparent" : "var(--line)"), padding: cell.length ? 0 : 0, display: "flex", flexDirection: "column", gap: 4 }}>
                     {cell.map((p) => (
@@ -2292,7 +2309,7 @@ function PeopleScreen({ people, kind }) {
                       <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.module || p.name}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group} · {t.days[p.day]} {p.startTime}–{p.endTime}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}–{p.endTime}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                           <Badge tone="primary">🎓 {p.students}</Badge>
@@ -2907,6 +2924,135 @@ function AnalyticsScreen() {
   );
 }
 
+// Data Export Panel Component
+function DataExportPanel() {
+  const t = useT();
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedClass, setSelectedClass] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
+  const [includeSubscriptions, setIncludeSubscriptions] = useState(true);
+  const [includePayments, setIncludePayments] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  const filteredStudents = React.useMemo(() => {
+    let result = [...STUDENTS];
+    
+    // Apply filters
+    if (startDate && endDate) {
+      result = filterStudentsByDateRange(result, startDate, endDate);
+    }
+    if (selectedClass !== "all") {
+      result = filterStudentsByClass(result, selectedClass);
+    }
+    if (selectedStatus !== "all") {
+      result = filterStudentsByStatus(result, selectedStatus);
+    }
+    
+    return result;
+  }, [startDate, endDate, selectedClass, selectedStatus]);
+
+  const stats = React.useMemo(() => calculateSummaryStats(filteredStudents), [filteredStudents]);
+
+  const handleExport = async () => {
+    if (filteredStudents.length === 0) {
+      alert(t.noDataSelected);
+      return;
+    }
+    
+    setExporting(true);
+    try {
+      await exportStudentsToExcel(filteredStudents, {
+        startDate,
+        endDate,
+        schoolName: store.SETTINGS?.name || "Académie Noor",
+        includePayments,
+        includeSubscriptions,
+      });
+      alert(t.exportSuccess + " (" + filteredStudents.length + " " + t.filteredResults + ")");
+    } catch (e) {
+      console.error(e);
+      alert(t.exportError + ": " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 22 }}>
+        <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t.exportData}</h3>
+        <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0 }}>Filtrez et exportez les données des étudiants en format Excel avec tous les détails des forfaits et paiements.</p>
+      </div>
+
+      {/* Filter Section */}
+      <Panel title={t.filterBy + ":"} style={{ marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          <Field label={t.from}>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </Field>
+          <Field label={t.to}>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </Field>
+        </div>
+        
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <Field label={t.filterByClass}>
+            <Select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
+              <option value="all">{t.allClasses}</option>
+              {CLASSES.map((c) => (
+                <option key={c.id} value={c.id}>{c.year || c.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t.filterByStatus}>
+            <Select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+              <option value="all">{t.allStatuses}</option>
+              <option value="ACTIVE">{t.active}</option>
+              <option value="EXPIRED">{t.expired}</option>
+              <option value="SUSPENDED">Suspendu</option>
+            </Select>
+          </Field>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
+            <input type="checkbox" checked={includeSubscriptions} onChange={(e) => setIncludeSubscriptions(e.target.checked)} style={{ cursor: "pointer" }} />
+            <span>{t.includeSubscriptions}</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13.5 }}>
+            <input type="checkbox" checked={includePayments} onChange={(e) => setIncludePayments(e.target.checked)} style={{ cursor: "pointer" }} />
+            <span>{t.includePayments}</span>
+          </label>
+        </div>
+      </Panel>
+
+      {/* Summary Statistics */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 16 }}>
+        <StatCard label={t.students} value={stats.totalStudents} icon="👥" tone="primary" />
+        <StatCard label={t.active} value={stats.activeStudents} icon="✅" tone="green" />
+        <StatCard label={t.totalRevenue} value={stats.totalRevenue} icon="💰" tone="amber" money />
+        <StatCard label={t.paid} value={stats.totalPaid} icon="📊" tone="sky" money />
+        <StatCard label={t.debt} value={stats.totalDebt} icon="⚠️" tone="red" money />
+      </div>
+
+      {/* Export Button */}
+      <Btn onClick={handleExport} disabled={exporting || filteredStudents.length === 0} style={{ width: "100%", padding: "12px 16px", marginBottom: 12 }}>
+        {exporting ? "⏳ " + t.export + "…" : "📥 " + t.exportToExcel}
+      </Btn>
+
+      {/* Backup & Restore */}
+      <Panel title={t.backup} style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+        <p style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 12 }}>Dernière sauvegarde: 2026-06-05 14:32</p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn variant="soft" style={{ flex: 1 }}>⬇️ {t.backup}</Btn>
+          <Btn variant="line" style={{ flex: 1 }}>⬆️ {t.restore}</Btn>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 function SettingsScreen({ ownOnly }) {
   const t = useT(); const [tab, setTab] = useState(ownOnly ? "profile" : "school");
   const fileRef = React.useRef(null);
@@ -3067,10 +3213,7 @@ function SettingsScreen({ ownOnly }) {
           <Field label="Confirmer"><Input type="password" placeholder="••••••••" value={pConfirm} onChange={(e) => setPConfirm(e.target.value)} /></Field>
           <Btn onClick={doSaveProfile} disabled={pBusy}>{t.save}</Btn>
         </div>}
-        {tab === "data" && <div>
-          <p style={{ fontSize: 13.5, color: "var(--muted)" }}>Dernière sauvegarde: 2026-05-27 22:14</p>
-          <div style={{ display: "flex", gap: 10 }}><Btn variant="soft">⬇️ {t.backup}</Btn><Btn variant="line">⬆️ {t.restore}</Btn></div>
-        </div>}
+        {tab === "data" && <DataExportPanel />}
       </Panel>
     </div>
   );
@@ -3185,7 +3328,7 @@ function TimetableGrid({ teacherId, classId }) {
                 <tr key={s}>
                   <td className="mono" style={{ padding: "10px 12px", fontSize: 11.5, color: "var(--faint)", fontWeight: 600, borderTop: "1px solid var(--line)" }}>{s}</td>
                   {days.map((_, di) => {
-                    const p = source.find((x) => x.day === di && x.startTime.slice(0, 2) === s.slice(0, 2));
+                    const p = source.find((x) => (x.days||[]).includes(di) && x.startTime.slice(0, 2) === s.slice(0, 2));
                     return <td key={di} style={{ padding: 5, verticalAlign: "top", borderTop: "1px solid var(--line)" }}>
                       {p && <motion.div whileHover={{ scale: 1.04 }} onClick={() => setDetail(p)}
                         style={{ background: colorFor(p), color: "#fff", borderRadius: 10, padding: "8px 9px", fontSize: 11, cursor: "pointer", boxShadow: "0 4px 12px -5px rgba(0,0,0,.35)" }}>
@@ -3206,7 +3349,7 @@ function TimetableGrid({ teacherId, classId }) {
         {detail && <div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
             <Badge tone="primary">{detail.className}</Badge><Badge tone="gray">👥 {detail.group}</Badge>
-            <Badge tone="gray">{t.days[detail.day]} {detail.startTime}–{detail.endTime}</Badge>
+            {(detail.days||[]).map((d,i)=><Badge key={i} tone="gray">{t.days[d]}</Badge>)}<Badge tone="gray">{detail.startTime}–{detail.endTime}</Badge>
           </div>
           <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 0 }}>👨‍🏫 {detail.teacher}</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
@@ -3242,7 +3385,7 @@ function StudentHome() {
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.module || p.name}</div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)" }}>👨‍🏫 {p.teacher.split(" ")[0]} · 👥 {p.group}</div>
               </div>
-              <Badge tone="primary">{t.days[p.day]} {p.startTime}–{p.endTime}</Badge>
+              <Badge tone="primary">{(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}–{p.endTime}</Badge>
             </div>
           ))}
         </Panel>
@@ -3362,7 +3505,7 @@ function TeacherDashboard() {
         {PLANS.slice(0, 4).map((p) => (
           <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
             <div><b style={{ fontSize: 13.5 }}>{p.module || p.name}</b><p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group}</p></div>
-            <Badge>{t.days[p.day]} {p.startTime}</Badge>
+            <Badge>{(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</Badge>
           </div>
         ))}
       </Panel>
@@ -3398,7 +3541,7 @@ function AdminAttendanceScreen() {
         id: p.id, name: p.name || p.module_name, module: p.module_name, className: p.class_label,
         group: p.group_name, teacher: p.teacher_name, teacherId: p.teacher_id,
         classId: p.class_id, startTime: (p.start_time || "09:00").slice(0, 5),
-        endTime: (p.end_time || "10:00").slice(0, 5), day: p.day_of_week,
+        endTime: (p.end_time || "10:00").slice(0, 5), days: Array.isArray(p.days_of_week) ? p.days_of_week : [],
         teacherPayModel: p.teacher_pay_model, teacherSeanceRate: p.teacher_seance_rate,
       })));
     }).catch(() => {});
@@ -3638,7 +3781,7 @@ function AttendanceScreen() {
       <div style={{ marginBottom: 16, maxWidth: 420 }}>
         <Field label={t.selectSession}>
           <Select value={session} onChange={(e) => { setSession(e.target.value); setMarks({}); setDebtUsed({}); }}>
-            {PLANS.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {t.days[p.day]} {p.startTime}</option>)}
+            {PLANS.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</option>)}
           </Select>
         </Field>
       </div>

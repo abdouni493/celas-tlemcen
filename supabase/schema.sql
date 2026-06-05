@@ -145,7 +145,7 @@ create table if not exists plans (
   group_id    uuid references groups(id)  on delete set null,
   module_id   uuid references modules(id) on delete set null,
   teacher_id  uuid references teachers(id) on delete set null,
-  day_of_week int check (day_of_week between 0 and 6),  -- 0 = Monday ... 6 = Sunday
+  days_of_week int[] default '{}',                      -- 0 = Monday ... 6 = Sunday
   start_time  time,
   end_time    time,
   created_at  timestamptz not null default now(),

@@ -101,7 +101,7 @@ export const db = {
   deleteStaff: (id) => supabase.from("staff").delete().eq("id", id).then(ok),
 
   // ---- Plans (timetable) -------------------------------------------------
-  listPlans: () => supabase.from("plans_v").select("*").order("day_of_week").then(ok),
+  listPlans: () => supabase.from("plans_v").select("*").order("start_time").then(ok),
   addPlan: (row) => supabase.from("plans").insert(row).select().single().then(ok),
   updatePlan: (id, patch) => supabase.from("plans").update(patch).eq("id", id).select().single().then(ok),
   deletePlan: (id) => supabase.from("plans").delete().eq("id", id).then(ok),
@@ -256,11 +256,51 @@ export const db = {
   addFormationLevel: (name) => supabase.from("formation_levels").insert({ name }).select().single().then(ok),
 
   // ---- Plans for a specific day ------------------------------------------
-  plansForDay: (dayOfWeek) => supabase.from("plans_v").select("*").eq("day_of_week", dayOfWeek).order("start_time").then(ok),
+  plansForDay: (dayOfWeek) => supabase.from("plans_v").select("*").contains("days_of_week", [dayOfWeek]).order("start_time").then(ok),
 
   // ---- Students for a specific plan's class ------------------------------
   studentsForPlan: (classId) => supabase.from("students_v").select("*").eq("class_id", classId).order("first_name").then(ok),
 
   // ---- Dashboard ---------------------------------------------------------
   dashboardTotals: () => supabase.from("dashboard_totals_v").select("*").single().then(ok),
+
+  // ---- Data Export (for Excel) -------------------------------------------
+  /**
+   * Get all students with their subscription details and payments
+   * Used for Excel export functionality
+   */
+  getStudentsForExport: () =>
+    supabase.from("students_v").select("*").order("created_at").then(ok),
+
+  /**
+   * Get payments for multiple students (for export)
+   */
+  getPaymentsForExport: async (startDate, endDate) => {
+    let query = supabase.from("payments").select("*, students(first_name,last_name,id_card)");
+    if (startDate) query = query.gte("paid_at", startDate);
+    if (endDate) query = query.lte("paid_at", endDate);
+    return query.order("paid_at", { ascending: false }).then(ok);
+  },
+
+  /**
+   * Get attendance records for export
+   */
+  getAttendanceForExport: async (startDate, endDate) => {
+    let query = supabase.from("attendance")
+      .select("*, students(first_name,last_name), plans(name,module_name)");
+    if (startDate) query = query.gte("session_date", startDate);
+    if (endDate) query = query.lte("session_date", endDate);
+    return query.order("session_date", { ascending: false }).then(ok);
+  },
+
+  /**
+   * Get subscription usage statistics for students
+   */
+  getSubscriptionStatsForExport: async (studentIds = null) => {
+    let query = supabase.from("subscription_usage_v").select("*");
+    if (studentIds && studentIds.length > 0) {
+      query = query.in("student_id", studentIds);
+    }
+    return query.then(ok);
+  },
 };
