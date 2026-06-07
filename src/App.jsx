@@ -174,6 +174,13 @@ const I18N = {
     autoCalc: "Calculé automatiquement", finalTotal: "Total final", selectAll: "Tout sélectionner",
     newLevel: "Nouveau niveau", teacherPayAlerts: "Salaires en attente", unpaidSeancesAlert: "Séances non payées",
     recordedAt: "Enregistré à", recordedBy: "Enregistré par",
+    payNow: "Payer maintenant", payLater: "Payer plus tard",
+    paymentOption: "Option de paiement", saveAsDebt: "Enregistrer comme dette",
+    debtDetails: "Reste dû", studentsInSub: "Étudiants abonnés",
+    subHistory: "Historique des abonnements", removeSubscription: "Supprimer l'abonnement",
+    confirmRemoveSub: "Supprimer cet abonnement ?", subRemoved: "Abonnement supprimé",
+    noSubscription: "Aucun abonnement assigné", assignedOn: "Assigné le", removedOn: "Retiré le",
+    planInfo: "Emploi du temps", tabSubs: "Abonnements", tabPays: "Paiements", tabAtt: "Présences",
     // Export & Data Management
     exportData: "Exporter les données", exportToExcel: "Exporter en Excel", dateRange: "Plage de dates",
     filterByClass: "Filtrer par classe", filterByStatus: "Filtrer par statut",
@@ -275,6 +282,13 @@ const I18N = {
     autoCalc: "محسوب تلقائياً", finalTotal: "المجموع النهائي", selectAll: "تحديد الكل",
     newLevel: "مستوى جديد", teacherPayAlerts: "رواتب معلقة", unpaidSeancesAlert: "حصص غير مدفوعة",
     recordedAt: "سُجل في", recordedBy: "سُجل بواسطة",
+    payNow: "الدفع الآن", payLater: "الدفع لاحقاً",
+    paymentOption: "خيار الدفع", saveAsDebt: "حفظ كدين",
+    debtDetails: "المبلغ المتبقي", studentsInSub: "الطلاب المشتركون",
+    subHistory: "سجل الاشتراكات", removeSubscription: "حذف الاشتراك",
+    confirmRemoveSub: "حذف هذا الاشتراك؟", subRemoved: "تم حذف الاشتراك",
+    noSubscription: "لا يوجد اشتراك", assignedOn: "تاريخ التعيين", removedOn: "تاريخ الإلغاء",
+    planInfo: "الجدول الزمني", tabSubs: "الاشتراكات", tabPays: "المدفوعات", tabAtt: "الحضور",
     // Export & Data Management
     exportData: "تصدير البيانات", exportToExcel: "تصدير إلى Excel", dateRange: "نطاق التاريخ",
     filterByClass: "تصفية حسب الفصل", filterByStatus: "تصفية حسب الحالة",
@@ -897,6 +911,65 @@ function AdminDashboard() {
   );
 }
 
+/* Reusable student detail modal body used in Classes, Planner, Subscriptions */
+function StudentViewModalBody({ student, payments, attendance, attFilter, setAttFilter, t }) {
+  if (!student) return null;
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <Panel title={t.finalPrice}><div className="mono" style={{ fontSize: 17, fontWeight: 800 }}>{fmt(student.finalPrice)}</div></Panel>
+        <Panel title={t.paid}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: "var(--green)" }}>{fmt(student.paid)}</div></Panel>
+        <Panel title={t.remaining}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: student.debt > 0 ? "var(--red)" : "var(--green)" }}>{fmt(student.debt)}</div></Panel>
+      </div>
+      <Panel title={`${t.subscription}: ${student.subType || "—"}`}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          {student.className && <Badge tone="gray">📚 {student.className}</Badge>}
+          {student.group && <Badge tone="gray">👥 {student.group}</Badge>}
+          <Badge tone={student.status === "ACTIVE" ? "green" : "red"}>{student.status === "ACTIVE" ? t.active : t.expired}</Badge>
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--muted)" }}>
+          <span>{t.seancesLeft}: <b className="mono" style={{ color: "var(--ink)" }}>{student.seancesRemaining ?? "∞"}{student.seancesTotal ? `/${student.seancesTotal}` : ""}</b></span>
+          {student.startDate && <span>{t.startDate}: <b className="mono" style={{ color: "var(--ink)" }}>{student.startDate}</b></span>}
+          {student.expiryDate && <span>{t.expiryDate}: <b className="mono" style={{ color: "var(--amber)" }}>{student.expiryDate}</b></span>}
+          {!student.expiryDate && <Badge tone="green">{t.noExpiry}</Badge>}
+        </div>
+      </Panel>
+      <div style={{ marginTop: 14 }}>
+        <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.history} · {t.payments}</h4>
+        {payments.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p> :
+          payments.map((p, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
+              <div><span>{p.date} · {t[p.method] || p.method}</span>{p.collectorName && <span style={{ color: "var(--muted)", fontSize: 11.5, marginLeft: 8 }}>{t.collectedBy}: {p.collectorName}</span>}</div>
+              <span className="mono" style={{ color: "var(--green)", fontWeight: 700 }}>+{fmt(p.amount)}</span>
+            </div>
+          ))}
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>{t.seanceHistory}</h4>
+          <FilterChips value={attFilter} onChange={setAttFilter} options={[{ v: "all", l: t.all }, { v: "PRESENT", l: t.present }, { v: "ABSENT", l: t.absent }, { v: "LATE", l: t.late }]} />
+        </div>
+        {attendance.filter(a => attFilter === "all" || a.status === attFilter).length === 0
+          ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p>
+          : attendance.filter(a => attFilter === "all" || a.status === attFilter).map((a, i) => {
+            const tone = a.status === "PRESENT" ? "green" : a.status === "LATE" ? "amber" : "red";
+            return (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                <div>
+                  <span style={{ fontWeight: 600 }}>{a.date}</span>
+                  {a.recordedAt && <span style={{ color: "var(--faint)", marginLeft: 6 }}>{new Date(a.recordedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>}
+                  <span style={{ color: "var(--muted)", marginLeft: 6 }}>· {a.planName}</span>
+                  {a.isDebt && <Badge tone="amber" style={{ marginLeft: 6 }}>🎟️</Badge>}
+                </div>
+                <Badge tone={tone}>{a.status === "PRESENT" ? t.present : a.status === "LATE" ? t.late : t.absent}</Badge>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
 function ClassesScreen() {
   const t = useT();
   const [q, setQ] = useState(""); const [type, setType] = useState("all");
@@ -907,12 +980,35 @@ function ClassesScreen() {
   const [classes, setClasses] = useState(CLASSES);
   const [formationLevels, setFormationLevels] = useState(["A1", "A2", "B1", "B2", "C1", "C2"]);
   const [lvlModal, setLvlModal] = useState(false); const [newLvl, setNewLvl] = useState("");
+  const [classStudents, setClassStudents] = useState([]);
+  const [studView, setStudView] = useState(null);
+  const [studViewPays, setStudViewPays] = useState([]);
+  const [studViewAtt, setStudViewAtt] = useState([]);
+  const [studAttFilter, setStudAttFilter] = useState("all");
   const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const doRefresh = async () => { setClasses(await reloadClasses()); };
 
   useEffect(() => {
     db.listFormationLevels().then((lvls) => { if (lvls && lvls.length) setFormationLevels(lvls.map((l) => l.name)); }).catch(() => {});
   }, []);
+
+  const openView = (c) => {
+    setView(c);
+    // Traverse: class → plans → subscription types → students
+    const classPlans = PLANS.filter(p => p.classId === c.id);
+    const classPlanIds = new Set(classPlans.map(p => p.id));
+    const classSubTypeIds = new Set(SUB_TYPES.filter(st => classPlanIds.has(st.planId)).map(st => st.id));
+    setClassStudents(STUDENTS.filter(s => classSubTypeIds.has(s.subTypeId)));
+  };
+  const openStudView = async (s) => {
+    setStudView(s); setStudViewPays([]); setStudViewAtt([]); setStudAttFilter("all");
+    try {
+      const [pays, att] = await Promise.all([db.paymentsForStudent(s.id).catch(() => []), db.attendanceForStudent(s.id).catch(() => [])]);
+      setStudViewPays((pays || []).map(p => ({ amount: p.amount, date: p.paid_at?.slice(0,10), method: p.method, collectorName: p.collector_name })));
+      setStudViewAtt((att || []).map(a => ({ date: a.session_date, status: a.status, planName: a.plans?.name || "—", recordedAt: a.recorded_at, isDebt: a.is_debt })));
+    } catch(_) {}
+  };
+
   const doDelete = async (c) => {
     setClasses((prev) => prev.filter((x) => x.id !== c.id));
     try { await db.deleteClass(c.id); }
@@ -925,7 +1021,7 @@ function ClassesScreen() {
     } catch (e) { alert(e.message); }
   };
   const list = classes.filter((c) => (type === "all" || c.type === type) && classLabel(c).toLowerCase().includes(q.toLowerCase()));
-  const actions = (c) => [{ icon: "👁️", label: t.view, onClick: () => setView(c) }, { icon: "✏️", label: t.edit, onClick: () => setModal(true) }, { icon: "🗑️", label: t.delete, danger: true, onClick: () => setDel(c) }];
+  const actions = (c) => [{ icon: "👁️", label: t.view, onClick: () => openView(c) }, { icon: "✏️", label: t.edit, onClick: () => setModal(true) }, { icon: "🗑️", label: t.delete, danger: true, onClick: () => setDel(c) }];
   return (
     <div>
       <PageHead icon="🏫" title={t.classes} action={<Btn onClick={() => setModal(true)}>➕ {t.create}</Btn>} />
@@ -992,8 +1088,8 @@ function ClassesScreen() {
         )}
         <Field label={t.description}><Input value={form.description} onChange={(e) => setF("description", e.target.value)} placeholder={t.description} /></Field>
       </Modal>
-      <Modal open={!!view} onClose={() => setView(null)} title={view ? classLabel(view) : ""} wide
-        footer={<Btn variant="line" onClick={() => setView(null)}>{t.close}</Btn>}>
+      <Modal open={!!view} onClose={() => { setView(null); setClassStudents([]); }} title={view ? classLabel(view) : ""} wide
+        footer={<Btn variant="line" onClick={() => { setView(null); setClassStudents([]); }}>{t.close}</Btn>}>
         {view && <div>
           <Badge tone={view.type === "COURSES" ? "primary" : "green"}>{view.type === "COURSES" ? t.courses : t.formation}</Badge>
           <p style={{ color: "var(--muted)", fontSize: 13.5, marginTop: 12 }}>{view.desc}</p>
@@ -1009,7 +1105,28 @@ function ClassesScreen() {
               </div>
             ))}
           </div>
+          <div style={{ marginTop: 16 }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎓 {t.students} ({classStudents.length})</h4>
+            {classStudents.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p> :
+              classStudents.map((s) => (
+                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{s.firstName} {s.lastName}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{s.subType || "—"}{s.group ? ` · ${s.group}` : ""}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {s.seancesRemaining != null && <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining}/{s.seancesTotal}</Badge>}
+                    {s.debt > 0 ? <Badge tone="red">💳 {fmt(s.debt)}</Badge> : <Badge tone="green">✅ {t.paid}</Badge>}
+                    <Btn size="sm" variant="soft" onClick={() => openStudView(s)}>👁️ {t.view}</Btn>
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>}
+      </Modal>
+      <Modal open={!!studView} onClose={() => { setStudView(null); setStudViewPays([]); setStudViewAtt([]); }} title={studView ? `${studView.firstName} ${studView.lastName}` : ""} wide
+        footer={<Btn variant="line" onClick={() => { setStudView(null); setStudViewPays([]); setStudViewAtt([]); }}>{t.close}</Btn>}>
+        <StudentViewModalBody student={studView} payments={studViewPays} attendance={studViewAtt} attFilter={studAttFilter} setAttFilter={setStudAttFilter} t={t} />
       </Modal>
       <Modal open={lvlModal} onClose={() => setLvlModal(false)} title={t.newLevel}
         footer={<><Btn variant="line" onClick={() => setLvlModal(false)}>{t.cancel}</Btn><Btn onClick={async () => { if (!newLvl.trim()) return; try { await db.addFormationLevel(newLvl.trim()); setFormationLevels((p) => [...p, newLvl.trim()]); setF("level", newLvl.trim()); setNewLvl(""); setLvlModal(false); } catch (e) { alert(e.message); } }}>{t.save}</Btn></>}>
@@ -1038,8 +1155,27 @@ function PlannerScreen() {
   const [grpModal, setGrpModal] = useState(false);
   const [newMod, setNewMod] = useState("");
   const [grpName, setGrpName] = useState(""); const [grpCap, setGrpCap] = useState(20);
+  const [planStudents, setPlanStudents] = useState([]);
+  const [studView, setStudView] = useState(null);
+  const [studViewPays, setStudViewPays] = useState([]);
+  const [studViewAtt, setStudViewAtt] = useState([]);
+  const [studAttFilter, setStudAttFilter] = useState("all");
 
   const doRefresh = async () => { setPlans(await reloadPlans()); setGroups(await reloadGroups()); setModules([...store.MODULES]); };
+  const openDetail = (p) => {
+    setDetail(p);
+    // Traverse: plan → subscription types → students
+    const planSubTypeIds = new Set(SUB_TYPES.filter(st => st.planId === p.id).map(st => st.id));
+    setPlanStudents(STUDENTS.filter(s => planSubTypeIds.has(s.subTypeId)));
+  };
+  const openStudView = async (s) => {
+    setStudView(s); setStudViewPays([]); setStudViewAtt([]); setStudAttFilter("all");
+    try {
+      const [pays, att] = await Promise.all([db.paymentsForStudent(s.id).catch(() => []), db.attendanceForStudent(s.id).catch(() => [])]);
+      setStudViewPays((pays || []).map(p => ({ amount: p.amount, date: p.paid_at?.slice(0,10), method: p.method, collectorName: p.collector_name })));
+      setStudViewAtt((att || []).map(a => ({ date: a.session_date, status: a.status, planName: a.plans?.name || "—", recordedAt: a.recorded_at, isDebt: a.is_debt })));
+    } catch(_) {}
+  };
 
   // form state
   const blank = { name: "", classId: CLASSES[0]?.id, module: MODULES[0] || "", groupId: "", teacherId: TEACHERS[0]?.id, days: [0], startTime: "09:00", endTime: "10:30" };
@@ -1099,7 +1235,7 @@ function PlannerScreen() {
   const classGroups = groups.filter((g) => g.classId === form.classId);
 
   const actions = (p) => [
-    { icon: "👁️", label: t.view, onClick: () => setDetail(p) },
+    { icon: "👁️", label: t.view, onClick: () => openDetail(p) },
     { icon: "✏️", label: t.edit, onClick: () => openEdit(p) },
     { icon: "🗑️", label: t.delete, danger: true, onClick: () => setDel(p) },
   ];
@@ -1206,7 +1342,7 @@ function PlannerScreen() {
       </Modal>
 
       {/* Plan detail */}
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? (detail.module || detail.name) : ""} wide footer={<Btn variant="line" onClick={() => setDetail(null)}>{t.close}</Btn>}>
+      <Modal open={!!detail} onClose={() => { setDetail(null); setPlanStudents([]); }} title={detail ? (detail.module || detail.name) : ""} wide footer={<Btn variant="line" onClick={() => { setDetail(null); setPlanStudents([]); }}>{t.close}</Btn>}>
         {detail && <div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
             <Badge>{detail.className}</Badge><Badge tone="gray">{detail.group}</Badge>{(detail.days||[]).map((d,i)=><Badge key={i} tone="primary">{t.days[d]}</Badge>)}<Badge tone="gray">{detail.startTime}–{detail.endTime}</Badge>
@@ -1217,7 +1353,28 @@ function PlannerScreen() {
             <Panel title={t.totalGain}><div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--green)" }}>{fmt(detail.gains)}</div></Panel>
             <Panel title={t.debt}><div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--red)" }}>{fmt(detail.debt)}</div></Panel>
           </div>
+          <div style={{ marginTop: 16 }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎓 {t.students} ({planStudents.length})</h4>
+            {planStudents.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p> :
+              planStudents.map((s) => (
+                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{s.firstName} {s.lastName}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{s.subType || "—"}{s.group ? ` · ${s.group}` : ""}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {s.seancesRemaining != null && <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining}/{s.seancesTotal}</Badge>}
+                    {s.debt > 0 ? <Badge tone="red">💳 {fmt(s.debt)}</Badge> : <Badge tone="green">✅ {t.paid}</Badge>}
+                    <Btn size="sm" variant="soft" onClick={() => openStudView(s)}>👁️ {t.view}</Btn>
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>}
+      </Modal>
+      <Modal open={!!studView} onClose={() => { setStudView(null); setStudViewPays([]); setStudViewAtt([]); }} title={studView ? `${studView.firstName} ${studView.lastName}` : ""} wide
+        footer={<Btn variant="line" onClick={() => { setStudView(null); setStudViewPays([]); setStudViewAtt([]); }}>{t.close}</Btn>}>
+        <StudentViewModalBody student={studView} payments={studViewPays} attendance={studViewAtt} attFilter={studAttFilter} setAttFilter={setStudAttFilter} t={t} />
       </Modal>
 
       <Confirm open={!!del} onClose={() => setDel(null)} onConfirm={() => del && doDelete(del)} />
@@ -1307,8 +1464,12 @@ function SubscriptionsScreen() {
   const [detail, setDetail] = useState(null);
   const [del, setDel] = useState(null);
 
-  const blank = { name: "", planId: PLANS[0]?.id || "", days: 30, seancesCount: 8, perSeance: 750, total: 6000, expiryEnabled: true, totalManual: false };
+  const blank = { name: "", planId: PLANS[0]?.id || "", days: 30, seancesCount: 8, perSeance: 750, total: 6000, expiryEnabled: false, totalManual: false };
   const [form, setForm] = useState(blank);
+  const [studView, setStudView] = useState(null);
+  const [studViewPays, setStudViewPays] = useState([]);
+  const [studViewAtt, setStudViewAtt] = useState([]);
+  const [studAttFilter, setStudAttFilter] = useState("all");
   const setF = (k, v) => setForm((p) => {
     const next = { ...p, [k]: v };
     if (!next.totalManual && (k === "seancesCount" || k === "perSeance")) {
@@ -1318,6 +1479,14 @@ function SubscriptionsScreen() {
   });
 
   const doRefresh = async () => { setSubs(await reloadSubTypes()); };
+  const openStudView = async (s) => {
+    setStudView(s); setStudViewPays([]); setStudViewAtt([]); setStudAttFilter("all");
+    try {
+      const [pays, att] = await Promise.all([db.paymentsForStudent(s.id).catch(() => []), db.attendanceForStudent(s.id).catch(() => [])]);
+      setStudViewPays((pays || []).map(p => ({ amount: p.amount, date: p.paid_at?.slice(0,10), method: p.method, collectorName: p.collector_name })));
+      setStudViewAtt((att || []).map(a => ({ date: a.session_date, status: a.status, planName: a.plans?.name || "—", recordedAt: a.recorded_at, isDebt: a.is_debt })));
+    } catch(_) {}
+  };
 
   const openCreate = () => { setEditing(null); setForm(blank); setModal(true); };
   const openEdit = (s) => { setEditing(s); setForm({ name: s.name, planId: s.planId, days: s.days || 30, seancesCount: s.seancesCount, perSeance: s.perSeance, total: s.total, expiryEnabled: s.expiryEnabled, totalManual: true }); setModal(true); };
@@ -1464,9 +1633,10 @@ function SubscriptionsScreen() {
 
       {/* Detail */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name} wide footer={<Btn variant="line" onClick={() => setDetail(null)}>{t.close}</Btn>}>
-        {detail && (() => { 
+        {detail && (() => {
           const st = statsFor(detail);
           const plan = PLANS.find(p => p.id === detail.planId);
+          const detailStudents = STUDENTS.filter(s => s.subTypeId === detail.id);
           return (
             <div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
@@ -1482,9 +1652,30 @@ function SubscriptionsScreen() {
                 <Panel title={t.totalGain}><div className="mono" style={{ fontSize: 22, fontWeight: 800, color: "var(--green)" }}>{fmt(st.gain)}</div></Panel>
               </div>
               <Panel title={t.total}><div className="mono grad-text" style={{ fontSize: 26, fontWeight: 800 }}>{fmt(detail.total)}</div></Panel>
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎓 {t.studentsInSub} ({detailStudents.length})</h4>
+                {detailStudents.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p> :
+                  detailStudents.map((s) => (
+                    <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{s.firstName} {s.lastName}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{s.className || "—"}{s.group ? ` · ${s.group}` : ""}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {s.seancesRemaining != null && <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining}/{s.seancesTotal}</Badge>}
+                        {s.debt > 0 ? <Badge tone="red">💳 {fmt(s.debt)}</Badge> : <Badge tone="green">✅ {t.paid}</Badge>}
+                        <Btn size="sm" variant="soft" onClick={() => openStudView(s)}>👁️ {t.view}</Btn>
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           );
         })()}
+      </Modal>
+      <Modal open={!!studView} onClose={() => { setStudView(null); setStudViewPays([]); setStudViewAtt([]); }} title={studView ? `${studView.firstName} ${studView.lastName}` : ""} wide
+        footer={<Btn variant="line" onClick={() => { setStudView(null); setStudViewPays([]); setStudViewAtt([]); }}>{t.close}</Btn>}>
+        <StudentViewModalBody student={studView} payments={studViewPays} attendance={studViewAtt} attFilter={studAttFilter} setAttFilter={setStudAttFilter} t={t} />
       </Modal>
 
       <Confirm open={!!del} onClose={() => setDel(null)} onConfirm={() => del && doDelete(del)} />
@@ -1492,7 +1683,7 @@ function SubscriptionsScreen() {
   );
 }
 
-function StudentsScreen({ canPay = true }) {
+function StudentsScreen({ canPay = true, canRemoveSub = false }) {
   const t = useT();
   const profile = useProfile();
   const globalRefresh = useRefresh();
@@ -1507,6 +1698,9 @@ function StudentsScreen({ canPay = true }) {
   const [viewPayments, setViewPayments] = useState([]);
   const [viewAttendance, setViewAttendance] = useState([]);
   const [attFilter, setAttFilter] = useState("all");
+  const [viewSubHistory, setViewSubHistory] = useState([]);
+  const [viewTab, setViewTab] = useState("subs");
+  const [removeSubData, setRemoveSubData] = useState(null);
 
   // student form state
   const [sFirst, setSFirst] = useState(""); const [sLast, setSLast] = useState("");
@@ -1520,6 +1714,7 @@ function StudentsScreen({ canPay = true }) {
   const [aStart, setAStart] = useState(new Date().toISOString().slice(0, 10));
   const [aPaidNow, setAPaidNow] = useState("");
   const [aPayMethod, setAPayMethod] = useState("cash");
+  const [aPayLater, setAPayLater] = useState(false);
   const subObj = SUB_TYPES.find((s) => s.id === aSub);
   const aExpiry = subObj && subObj.expiryEnabled && subObj.days ? addDays(aStart, subObj.days) : null;
   const subPlan = subObj ? PLANS.find((p) => p.id === subObj.planId) : null;
@@ -1587,22 +1782,40 @@ function StudentsScreen({ canPay = true }) {
   };
 
   const openView = async (s) => {
-    setView(s); setViewPayments([]); setViewAttendance([]); setAttFilter("all");
+    setView(s); setViewPayments([]); setViewAttendance([]); setViewSubHistory([]); setAttFilter("all"); setViewTab("subs");
     try {
-      const [pays, att] = await Promise.all([
+      const [pays, att, subHist] = await Promise.all([
         db.paymentsForStudent(s.id).catch(() => []),
         db.attendanceForStudent(s.id).catch(() => []),
+        db.listStudentSubscriptions(s.id).catch(() => []),
       ]);
       setViewPayments((pays || []).map((p) => ({ amount: p.amount, date: p.paid_at?.slice(0, 10), method: p.method, collectorName: p.collector_name, recordedAt: p.paid_at })));
       setViewAttendance((att || []).map((a) => ({ id: a.id, date: a.session_date, status: a.status, planName: a.plans?.name || "—", recordedAt: a.recorded_at, isDebt: a.is_debt })));
+      setViewSubHistory(subHist || []);
     } catch (_) {}
+  };
+
+  const doRemoveSub = async () => {
+    if (!removeSubData) return;
+    try {
+      await db.removeStudentSubscription(removeSubData.studentId, removeSubData.subRecordId);
+      await doRefresh();
+      const updated = STUDENTS.find(x => x.id === removeSubData.studentId);
+      if (updated) await openView(updated);
+      setRemoveSubData(null);
+    } catch (e) { alert(e.message); }
   };
 
   const doAssign = async () => {
     if (!assign || !subObj) return;
     try {
-      await db.assignSubscription(assign.id, subObj, aStart, aExpiry);
-      if (aEffectivePaid > 0) {
+      const planInfo = subPlan ? {
+        planId: subPlan.id, planName: subPlan.module || subPlan.name,
+        classId: subPlan.classId, className: subPlan.className,
+        groupId: subPlan.groupId, groupName: subPlan.group, teacherName: subPlan.teacher,
+      } : null;
+      await db.assignSubscription(assign.id, subObj, aStart, aExpiry, planInfo);
+      if (!aPayLater && aEffectivePaid > 0) {
         const collectorName = profile?.full_name || "Admin";
         await db.addPayment(assign.id, aEffectivePaid, aPayMethod, collectorName, profile?.id, collectorName);
       }
@@ -1623,7 +1836,7 @@ function StudentsScreen({ canPay = true }) {
 
   const actions = (s) => [
     { icon: "👁️", label: t.view, onClick: () => openView(s) },
-    { icon: "🎫", label: t.assignSub, onClick: () => { setAssign(s); setASub(SUB_TYPES[0]?.id || ""); setAStart(new Date().toISOString().slice(0, 10)); setAPaidNow(""); setAPayMethod("cash"); } },
+    { icon: "🎫", label: t.assignSub, onClick: () => { setAssign(s); setASub(SUB_TYPES[0]?.id || ""); setAStart(new Date().toISOString().slice(0, 10)); setAPaidNow(""); setAPayMethod("cash"); setAPayLater(false); } },
     ...(canPay ? [{ icon: "💳", label: t.payDebt, onClick: () => { setPay(s); setPayAmt(""); setPayMethod("cash"); } }] : []),
     { icon: "✏️", label: t.edit, onClick: () => openEdit(s) },
     { icon: "🗑️", label: t.delete, danger: true, onClick: () => setDel(s) },
@@ -1730,92 +1943,205 @@ function StudentsScreen({ canPay = true }) {
             ) : null}
             {subObj && (
               <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 4 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <Field label={t.amountNow}>
-                    <Input
-                      type="number" min="0" max={subObj.total} step="any"
-                      value={aPaidNow === "" ? subObj.total : aPaidNow}
-                      onChange={(e) => setAPaidNow(e.target.value)}
-                    />
-                  </Field>
-                  <Field label={t.method}>
-                    <Select value={aPayMethod} onChange={(e) => setAPayMethod(e.target.value)}>
-                      <option value="cash">{t.cash}</option>
-                      <option value="card">{t.card}</option>
-                      <option value="transfer">{t.transfer}</option>
-                    </Select>
-                  </Field>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, padding: "10px 14px", borderRadius: 10, background: aDebt > 0 ? "var(--red-bg, #FEF2F2)" : "var(--green-bg)", border: `1px solid ${aDebt > 0 ? "var(--red)" : "var(--green)"}` }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: aDebt > 0 ? "var(--red)" : "var(--green)" }}>
-                    {aDebt > 0 ? `💳 ${t.debt}` : `✅ ${t.paid}`}
-                  </span>
-                  <span className="mono" style={{ fontSize: 15, fontWeight: 800, color: aDebt > 0 ? "var(--red)" : "var(--green)" }}>
-                    {fmt(aDebt)}
-                  </span>
-                </div>
+                <Field label={t.paymentOption}>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {[false, true].map((v) => (
+                      <button key={String(v)} onClick={() => setAPayLater(v)}
+                        style={{ flex: 1, padding: "10px", borderRadius: 11, border: "1px solid " + (aPayLater === v ? "var(--primary)" : "var(--line)"), background: aPayLater === v ? "var(--primary-50)" : "#fff", color: aPayLater === v ? "var(--primary-600)" : "var(--muted)", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                        {v ? `⏰ ${t.payLater}` : `✅ ${t.payNow}`}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                {!aPayLater ? (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <Field label={t.amountNow}>
+                        <Input
+                          type="number" min="0" max={subObj.total} step="any"
+                          value={aPaidNow === "" ? subObj.total : aPaidNow}
+                          onChange={(e) => setAPaidNow(e.target.value)}
+                        />
+                      </Field>
+                      <Field label={t.method}>
+                        <Select value={aPayMethod} onChange={(e) => setAPayMethod(e.target.value)}>
+                          <option value="cash">{t.cash}</option>
+                          <option value="card">{t.card}</option>
+                          <option value="transfer">{t.transfer}</option>
+                        </Select>
+                      </Field>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, padding: "10px 14px", borderRadius: 10, background: aDebt > 0 ? "var(--red-bg, #FEF2F2)" : "var(--green-bg)", border: `1px solid ${aDebt > 0 ? "var(--red)" : "var(--green)"}` }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: aDebt > 0 ? "var(--red)" : "var(--green)" }}>
+                        {aDebt > 0 ? `💳 ${t.debt}` : `✅ ${t.paid}`}
+                      </span>
+                      <span className="mono" style={{ fontSize: 15, fontWeight: 800, color: aDebt > 0 ? "var(--red)" : "var(--green)" }}>
+                        {fmt(aDebt)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ padding: "12px 16px", borderRadius: 10, background: "var(--amber-bg)", border: "1px solid var(--amber)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--amber)" }}>💳 {t.saveAsDebt}</span>
+                    <span className="mono" style={{ fontSize: 16, fontWeight: 800, color: "var(--amber)" }}>{fmt(subObj.total)}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
       </Modal>
 
-      {/* View details */}
-      <Modal open={!!view} onClose={() => setView(null)} title={view ? `${view.firstName} ${view.lastName}` : ""} wide
-        footer={<Btn variant="line" onClick={() => setView(null)}>{t.close}</Btn>}>
-        {view && (
-          <div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-              <Panel title={t.finalPrice}><div className="mono" style={{ fontSize: 17, fontWeight: 800 }}>{fmt(view.finalPrice)}</div></Panel>
-              <Panel title={t.paid}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: "var(--green)" }}>{fmt(view.paid)}</div></Panel>
-              <Panel title={t.remaining}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: view.debt > 0 ? "var(--red)" : "var(--green)" }}>{fmt(view.debt)}</div></Panel>
+      {/* View details — tabbed */}
+      <Modal open={!!view} onClose={() => setView(null)} title={view ? `🎓 ${view.firstName} ${view.lastName}` : ""} wide
+        footer={
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {view?.isFree && <Badge tone="green">🎁 {t.specialCases}</Badge>}
+              <Badge tone={view?.status === "ACTIVE" ? "green" : "red"}>{view?.status === "ACTIVE" ? t.active : t.expired}</Badge>
             </div>
-            <Panel title={`${t.subscription}: ${view.subType}`}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                {view.className && <Badge tone="gray">📚 {view.className}</Badge>}
-                {view.group && <Badge tone="gray">👥 {view.group}</Badge>}
+            <div style={{ display: "flex", gap: 8 }}>
+              {canPay && view?.debt > 0 && <Btn variant="soft" onClick={() => { setPay(view); setView(null); setPayAmt(""); setPayMethod("cash"); }}>💳 {t.payDebt}</Btn>}
+              <Btn variant="line" onClick={() => setView(null)}>{t.close}</Btn>
+            </div>
+          </div>
+        }>
+        {view && (() => {
+          // Subscription display: prefer history table, fall back to student's current sub
+          const subDisplay = viewSubHistory.length > 0 ? viewSubHistory : (view.subTypeId ? [{
+            id: null,
+            sub_type_name: view.subType || "—",
+            plan_name: (() => { const sub = SUB_TYPES.find(s => s.id === view.subTypeId); const p = sub ? PLANS.find(pl => pl.id === sub.planId) : null; return p ? (p.module || p.name) : "—"; })(),
+            class_name: view.className || "—",
+            group_name: view.group || "—",
+            teacher_name: (() => { const sub = SUB_TYPES.find(s => s.id === view.subTypeId); const p = sub ? PLANS.find(pl => pl.id === sub.planId) : null; return p?.teacher || "—"; })(),
+            total_price: view.finalPrice,
+            seances_total: view.seancesTotal,
+            start_date: view.startDate,
+            expiry_date: view.expiryDate,
+            expiry_enabled: view.expiryEnabled,
+            status: view.status || "ACTIVE",
+          }] : []);
+
+          return (
+            <div>
+              {/* Financial summary */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+                <Panel title={t.finalPrice}><div className="mono" style={{ fontSize: 17, fontWeight: 800 }}>{fmt(view.finalPrice)}</div></Panel>
+                <Panel title={t.paid}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: "var(--green)" }}>{fmt(view.paid)}</div></Panel>
+                <Panel title={t.remaining}><div className="mono" style={{ fontSize: 17, fontWeight: 800, color: view.debt > 0 ? "var(--red)" : "var(--green)" }}>{fmt(view.debt)}</div></Panel>
               </div>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--muted)" }}>
-                <span>{t.seancesLeft}: <b className="mono" style={{ color: "var(--ink)" }}>{view.seancesRemaining ?? "∞"}{view.seancesTotal ? `/${view.seancesTotal}` : ""}</b></span>
-                {view.startDate && <span>{t.startDate}: <b className="mono" style={{ color: "var(--ink)" }}>{view.startDate}</b></span>}
-                {view.expiryDate && <span>{t.expiryDate}: <b className="mono" style={{ color: "var(--amber)" }}>{view.expiryDate}</b></span>}
-                {!view.expiryDate && <Badge tone="green">{t.noExpiry}</Badge>}
-              </div>
-            </Panel>
-            <div style={{ marginTop: 14 }}>
-              <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.history} · {t.payments}</h4>
-              {viewPayments.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p> :
-                viewPayments.map((p, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
-                    <div><span>{p.date} · {t[p.method] || p.method}</span>{p.collectorName && <span style={{ color: "var(--muted)", fontSize: 11.5, marginLeft: 8 }}>{t.collectedBy}: {p.collectorName}</span>}</div>
-                    <span className="mono" style={{ color: "var(--green)", fontWeight: 700 }}>+{fmt(p.amount)}</span>
-                  </div>
+
+              {/* Tab bar */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "var(--primary-50)", borderRadius: 12, padding: 4 }}>
+                {[["subs", `🎫 ${t.tabSubs} (${subDisplay.length})`], ["pays", `💳 ${t.tabPays} (${viewPayments.length})`], ["att", `✅ ${t.tabAtt} (${viewAttendance.length})`]].map(([tab, label]) => (
+                  <button key={tab} onClick={() => setViewTab(tab)}
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: 9, border: "none", background: viewTab === tab ? "#fff" : "transparent", color: viewTab === tab ? "var(--primary-600)" : "var(--muted)", fontWeight: viewTab === tab ? 700 : 500, cursor: "pointer", fontSize: 12.5, boxShadow: viewTab === tab ? "var(--shadow)" : "none", transition: "all .15s" }}>
+                    {label}
+                  </button>
                 ))}
-            </div>
-            {/* Attendance history */}
-            <div style={{ marginTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>{t.seanceHistory}</h4>
-                <FilterChips value={attFilter} onChange={setAttFilter} options={[{ v: "all", l: t.all }, { v: "PRESENT", l: t.present }, { v: "ABSENT", l: t.absent }, { v: "LATE", l: t.late }]} />
               </div>
-              {viewAttendance.filter((a) => attFilter === "all" || a.status === attFilter).length === 0
-                ? <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p>
-                : viewAttendance.filter((a) => attFilter === "all" || a.status === attFilter).map((a, i) => {
-                  const tone = a.status === "PRESENT" ? "green" : a.status === "LATE" ? "amber" : "red";
-                  return (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
-                      <div>
-                        <span style={{ fontWeight: 600 }}>{a.date}</span>
-                        {a.recordedAt && <span style={{ color: "var(--faint)", marginLeft: 6 }}>{new Date(a.recordedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>}
-                        <span style={{ color: "var(--muted)", marginLeft: 6 }}>· {a.planName}</span>
-                        {a.isDebt && <Badge tone="amber" style={{ marginLeft: 6 }}>🎟️</Badge>}
+
+              {/* ── TAB: Abonnements ── */}
+              {viewTab === "subs" && (
+                <div>
+                  {subDisplay.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--muted)", fontSize: 13 }}>🎫 {t.noSubscription}</div>
+                  ) : subDisplay.map((sub, i) => {
+                    const isActive = sub.status === "ACTIVE";
+                    const tone = isActive ? "green" : sub.status === "REMOVED" ? "gray" : "red";
+                    return (
+                      <div key={sub.id || i} style={{ ...card, padding: 16, marginBottom: 12, borderLeft: `4px solid ${isActive ? "var(--green)" : "var(--red)"}` }}>
+                        {/* Header */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--ink)" }}>🎫 {sub.sub_type_name}</div>
+                            {sub.assigned_at && <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{t.assignedOn}: {new Date(sub.assigned_at).toLocaleDateString("fr-FR")}</div>}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <Badge tone={tone}>{isActive ? t.active : sub.status === "REMOVED" ? "Retiré" : t.expired}</Badge>
+                            {canRemoveSub && isActive && (
+                              <Btn size="sm" variant="soft" style={{ color: "var(--red)", borderColor: "var(--red)" }}
+                                onClick={() => setRemoveSubData({ studentId: view.id, subRecordId: sub.id, subName: sub.sub_type_name })}>
+                                🗑️
+                              </Btn>
+                            )}
+                          </div>
+                        </div>
+                        {/* Class / Plan / Group / Teacher */}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                          {sub.class_name && <Badge tone="primary">📚 {sub.class_name}</Badge>}
+                          {sub.plan_name && <Badge tone="gray">📅 {sub.plan_name}</Badge>}
+                          {sub.group_name && <Badge tone="gray">👥 {sub.group_name}</Badge>}
+                          {sub.teacher_name && <Badge tone="gray">👨‍🏫 {sub.teacher_name}</Badge>}
+                        </div>
+                        {/* Details grid */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                          <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{t.nbSeances}: <b className="mono" style={{ color: "var(--ink)" }}>{sub.seances_total}</b></div>
+                          <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{t.total}: <b className="mono" style={{ color: "var(--primary-600)" }}>{fmt(sub.total_price || 0)}</b></div>
+                          {sub.start_date && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{t.startDate}: <b className="mono" style={{ color: "var(--ink)" }}>{sub.start_date}</b></div>}
+                          {sub.expiry_date ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{t.expiryDate}: <b className="mono" style={{ color: "var(--amber)" }}>{sub.expiry_date}</b></div> : <div style={{ fontSize: 12.5 }}><Badge tone="green">{t.noExpiry}</Badge></div>}
+                          {isActive && view.seancesRemaining != null && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{t.seancesLeft}: <b className="mono" style={{ color: view.seancesRemaining <= 2 ? "var(--amber)" : "var(--green)" }}>{view.seancesRemaining}/{view.seancesTotal}</b></div>}
+                          {sub.ended_at && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{t.removedOn}: <b className="mono">{new Date(sub.ended_at).toLocaleDateString("fr-FR")}</b></div>}
+                        </div>
                       </div>
-                      <Badge tone={tone}>{a.status === "PRESENT" ? t.present : a.status === "LATE" ? t.late : t.absent}</Badge>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── TAB: Paiements ── */}
+              {viewTab === "pays" && (
+                <div>
+                  {viewPayments.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "20px 0" }}>{t.noResults}</p> :
+                    viewPayments.map((p, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{p.date} · <span style={{ color: "var(--muted)", fontWeight: 400 }}>{t[p.method] || p.method}</span></div>
+                          {p.collectorName && <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 2 }}>{t.collectedBy}: {p.collectorName}</div>}
+                        </div>
+                        <span className="mono" style={{ color: "var(--green)", fontWeight: 800, fontSize: 14 }}>+{fmt(p.amount)}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* ── TAB: Présences ── */}
+              {viewTab === "att" && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                    <FilterChips value={attFilter} onChange={setAttFilter} options={[{ v: "all", l: t.all }, { v: "PRESENT", l: t.present }, { v: "ABSENT", l: t.absent }, { v: "LATE", l: t.late }]} />
+                  </div>
+                  {viewAttendance.filter(a => attFilter === "all" || a.status === attFilter).length === 0
+                    ? <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "20px 0" }}>{t.noResults}</p>
+                    : viewAttendance.filter(a => attFilter === "all" || a.status === attFilter).map((a, i) => {
+                      const tone = a.status === "PRESENT" ? "green" : a.status === "LATE" ? "amber" : "red";
+                      return (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                          <div>
+                            <span style={{ fontWeight: 600 }}>{a.date}</span>
+                            {a.recordedAt && <span style={{ color: "var(--faint)", marginLeft: 6 }}>{new Date(a.recordedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>}
+                            <span style={{ color: "var(--muted)", marginLeft: 6 }}>· {a.planName}</span>
+                            {a.isDebt && <Badge tone="amber" style={{ marginLeft: 6 }}>🎟️</Badge>}
+                          </div>
+                          <Badge tone={tone}>{a.status === "PRESENT" ? t.present : a.status === "LATE" ? t.late : t.absent}</Badge>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
-            {canPay && view.debt > 0 && <Btn style={{ marginTop: 14 }} onClick={() => { setPay(view); setView(null); setPayAmt(""); setPayMethod("cash"); }}>💳 {t.payDebt}</Btn>}
+          );
+        })()}
+      </Modal>
+
+      {/* Confirm remove subscription */}
+      <Modal open={!!removeSubData} onClose={() => setRemoveSubData(null)} title={t.confirmRemoveSub}
+        footer={<><Btn variant="line" onClick={() => setRemoveSubData(null)}>{t.cancel}</Btn><Btn variant="primary" onClick={doRemoveSub}>🗑️ {t.removeSubscription}</Btn></>}>
+        {removeSubData && (
+          <div style={{ padding: "8px 0" }}>
+            <p style={{ fontSize: 14, color: "var(--ink)", margin: "0 0 8px" }}>🎫 <b>{removeSubData.subName}</b></p>
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>{t.deleteWarn}</p>
           </div>
         )}
       </Modal>
@@ -1825,13 +2151,23 @@ function StudentsScreen({ canPay = true }) {
         footer={<><Btn variant="line" onClick={() => setPay(null)}>{t.cancel}</Btn><Btn disabled={!payAmt || +payAmt <= 0} onClick={() => setConfirm(true)}>{t.confirm}</Btn></>}>
         {pay && (
           <div>
-            <div style={{ background: "var(--grad-primary-soft)", borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 13, border: "1px solid #EADDFB" }}>
-              <Row k={t.finalPrice} v={fmt(pay.finalPrice)} />
+            <div style={{ background: "var(--grad-primary-soft)", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid #EADDFB" }}>
+              <div style={{ fontWeight: 700, fontSize: 14.5, marginBottom: 6, color: "var(--ink)" }}>🎓 {pay.firstName} {pay.lastName}</div>
+              {pay.subType && <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>🎫 {pay.subType}{pay.className ? ` · ${pay.className}` : ""}{pay.group ? ` · ${pay.group}` : ""}</div>}
+              <Row k={`${t.subscription} (${t.total})`} v={fmt(pay.finalPrice)} />
               <Row k={t.paid} v={fmt(pay.paid)} green />
-              <Row k={t.remaining} v={fmt(pay.debt)} red bold />
+              <div style={{ height: 1, background: "var(--line)", margin: "8px 0" }} />
+              <Row k={t.debtDetails} v={fmt(pay.debt)} red bold />
             </div>
-            <Field label={t.amountNow}><Input type="number" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} max={pay.debt} placeholder="0" /></Field>
-            {payAmt > 0 && <div style={{ fontSize: 13, color: "var(--muted)" }}>{t.remaining}: <b className="mono" style={{ color: "var(--ink)" }}>{fmt(Math.max(0, pay.debt - payAmt))}</b></div>}
+            <Field label={t.amountNow}>
+              <Input type="number" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} max={pay.debt} placeholder={String(pay.debt)} />
+            </Field>
+            {+payAmt > 0 && (
+              <div style={{ padding: "10px 14px", borderRadius: 10, background: +payAmt >= pay.debt ? "var(--green-bg)" : "var(--amber-bg)", border: `1px solid ${+payAmt >= pay.debt ? "var(--green)" : "var(--amber)"}`, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: +payAmt >= pay.debt ? "var(--green)" : "var(--amber)" }}>{+payAmt >= pay.debt ? `✅ ${t.paid}` : `⏳ ${t.remaining}`}</span>
+                <span className="mono" style={{ fontSize: 15, fontWeight: 800, color: +payAmt >= pay.debt ? "var(--green)" : "var(--amber)" }}>{fmt(Math.max(0, pay.debt - +payAmt))}</span>
+              </div>
+            )}
             <Field label={t.method}>
               <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
                 <option value="cash">{t.cash}</option>
@@ -4344,7 +4680,7 @@ function renderScreen(role, screen) {
     // Admin
     "ADMIN:dashboard": <AdminDashboard />, "ADMIN:classes": <ClassesScreen />, "ADMIN:planner": <PlannerScreen />,
     "ADMIN:subscriptions": <SubscriptionsScreen />,
-    "ADMIN:students": <StudentsScreen canPay />, "ADMIN:parents": <ParentsScreen />,
+    "ADMIN:students": <StudentsScreen canPay canRemoveSub />, "ADMIN:parents": <ParentsScreen />,
     "ADMIN:teachers": <PeopleScreen people={TEACHERS} kind="teacher" />, "ADMIN:staff": <PeopleScreen people={STAFF} kind="staff" />,
     "ADMIN:attendance": <AdminAttendanceScreen />,
     "ADMIN:expenses": <ExpensesScreen />, "ADMIN:announcements": <AnnouncementsScreen />,

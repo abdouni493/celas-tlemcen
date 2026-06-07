@@ -117,14 +117,66 @@ export const db = {
   addStudent: (row) => supabase.from("students").insert(row).select().single().then(ok),
   updateStudent: (id, patch) => supabase.from("students").update(patch).eq("id", id).select().single().then(ok),
   deleteStudent: (id) => supabase.from("students").delete().eq("id", id).then(ok),
-  assignSubscription: (studentId, sub, startDate, expiryDate) =>
-    supabase.from("students").update({
+  assignSubscription: async (studentId, sub, startDate, expiryDate, planInfo) => {
+    // Mark any currently-active history record as EXPIRED
+    try {
+      await supabase.from("student_subscriptions")
+        .update({ status: "EXPIRED", ended_at: new Date().toISOString() })
+        .eq("student_id", studentId).eq("status", "ACTIVE");
+    } catch (_) {}
+    // Record new subscription in history (graceful — table may not exist yet)
+    try {
+      await supabase.from("student_subscriptions").insert({
+        student_id: studentId,
+        sub_type_id: sub.id,
+        sub_type_name: sub.name || "",
+        plan_id: planInfo?.planId || sub.planId || null,
+        plan_name: planInfo?.planName || "",
+        class_id: planInfo?.classId || null,
+        class_name: planInfo?.className || "",
+        group_name: planInfo?.groupName || "",
+        teacher_name: planInfo?.teacherName || "",
+        total_price: sub.total || 0,
+        seances_total: sub.seancesCount || 0,
+        start_date: startDate,
+        expiry_date: expiryDate,
+        expiry_enabled: sub.expiryEnabled || false,
+        status: "ACTIVE",
+      });
+    } catch (_) {}
+    // Update student record + sync class/group from plan
+    return supabase.from("students").update({
       sub_type_id: sub.id, sub_price: sub.total, final_price: sub.total, discount_pct: 0,
       seances_total: sub.seancesCount, seances_remaining: sub.seancesCount,
       start_date: startDate, expiry_date: expiryDate, expiry_enabled: sub.expiryEnabled,
-      paid: 0,
-      status: "ACTIVE",
-    }).eq("id", studentId).select().single().then(ok),
+      paid: 0, status: "ACTIVE",
+      class_id: planInfo?.classId || null,
+      group_id: planInfo?.groupId || null,
+    }).eq("id", studentId).select().single().then(ok);
+  },
+
+  listStudentSubscriptions: (studentId) =>
+    supabase.from("student_subscriptions").select("*")
+      .eq("student_id", studentId).order("assigned_at", { ascending: false }).then(ok),
+
+  removeStudentSubscription: async (studentId, subRecordId) => {
+    // Mark history record as REMOVED
+    if (subRecordId) {
+      try {
+        await supabase.from("student_subscriptions")
+          .update({ status: "REMOVED", ended_at: new Date().toISOString() })
+          .eq("id", subRecordId);
+      } catch (_) {}
+    }
+    // Clear subscription + class/group on the student
+    return supabase.from("students").update({
+      sub_type_id: null, sub_price: 0, final_price: 0, discount_pct: 0,
+      seances_total: null, seances_remaining: null, debt_seance_used: false,
+      start_date: null, expiry_date: null, expiry_enabled: false,
+      paid: 0, status: "ACTIVE",
+      class_id: null, group_id: null,
+    }).eq("id", studentId).select().single().then(ok);
+  },
 
   // ---- Payments ----------------------------------------------------------
   paymentsForStudent: (studentId) =>
