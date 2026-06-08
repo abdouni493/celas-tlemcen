@@ -47,7 +47,7 @@ const mapTeacher = (t, acomptes = [], absences = []) => ({ id: t.id, firstName: 
 const mapStaff = (s, acomptes = [], absences = []) => ({ id: s.id, firstName: s.first_name, lastName: s.last_name, position: s.position, phone: s.phone, email: s.email, baseSalary: s.base_salary, unpaidMonths: s.unpaid_months || 0, acomptes, absences });
 const mapAcompte = (a) => ({ id: a.id, amount: Number(a.amount), note: a.note, date: a.date || a.created_at?.slice(0, 10), settled: a.settled || false });
 const mapAbsence = (a) => ({ id: a.id, cost: Number(a.cost), note: a.note, date: a.date || a.created_at?.slice(0, 10), settled: a.settled || false });
-const mapPlan = (p) => { const days = Array.isArray(p.days_of_week) ? p.days_of_week : []; return { id: p.id, name: p.name || p.module_name, classId: p.class_id, className: p.class_label, groupId: p.group_id, group: p.group_name, module: p.module_name, days, day: days[0] ?? 0, startTime: (p.start_time || "09:00").slice(0, 5), endTime: (p.end_time || "10:00").slice(0, 5), teacherId: p.teacher_id, teacher: p.teacher_name, students: p.students_count ?? 0, gains: 0, debt: 0 }; };
+const mapPlan = (p) => { const days = Array.isArray(p.days_of_week) ? p.days_of_week : []; return { id: p.id, name: p.name || p.module_name, classId: p.class_id, className: p.class_label, classType: p.class_type || "COURSES", groupId: p.group_id, group: p.group_name, module: p.module_name, days, day: days[0] ?? 0, startTime: (p.start_time || "09:00").slice(0, 5), endTime: (p.end_time || "10:00").slice(0, 5), teacherId: p.teacher_id, teacher: p.teacher_name, students: p.students_count ?? 0, gains: 0, debt: 0 }; };
 const mapSub = (s, st) => ({ id: s.id, name: s.name, planId: s.plan_id, days: s.days, seancesCount: s.seances_count, perSeance: s.per_seance, total: Number(s.total), expiryEnabled: s.expiry_enabled, studentsUsed: st?.students_used ?? 0, totalGain: Number(st?.total_gain ?? 0) });
 const mapStudent = (s) => ({ id: s.id, firstName: s.first_name, lastName: s.last_name, birthDate: s.birth_date, birthPlace: s.birth_place, idCard: s.id_card, schoolNum: s.school_num, classId: s.class_id, className: s.class_label, group: s.group_name, subTypeId: s.sub_type_id, subType: s.sub_type_name, subPrice: Number(s.sub_price), discountPct: Number(s.discount_pct), finalPrice: Number(s.final_price), paid: Number(s.paid), debt: Number(s.debt), seancesTotal: s.seances_total, seancesRemaining: s.seances_remaining, debtSeanceUsed: s.debt_seance_used, startDate: s.start_date, expiryDate: s.expiry_date, expiryEnabled: s.expiry_enabled, status: s.status, isFree: s.is_free || false, payments: [] });
 const mapExpense = (e) => ({ id: e.id, category: e.category, name: e.name, amount: Number(e.amount), date: e.spent_at, categoryId: e.category_id });
@@ -56,8 +56,20 @@ const mapNotif = (n) => ({ id: n.id, type: n.type, msg: n.message, title: n.titl
 
 // --- selective reload functions (per-table) --------------------------------
 export async function reloadStudents() {
-  const students = await db.listStudents();
-  store.STUDENTS = students.map(mapStudent);
+  const [students, allSubs] = await Promise.all([
+    db.listStudents(),
+    db.listAllStudentSubscriptions().catch(() => []),
+  ]);
+  const subsByStudentId = {};
+  (allSubs || []).forEach((sub) => {
+    if (!subsByStudentId[sub.student_id]) subsByStudentId[sub.student_id] = [];
+    subsByStudentId[sub.student_id].push(sub);
+  });
+  store.STUDENTS = students.map((s) => {
+    const mapped = mapStudent(s);
+    mapped.activeSubscriptions = (subsByStudentId[s.id] || []).filter((x) => x.status === "ACTIVE");
+    return mapped;
+  });
   return store.STUDENTS;
 }
 
@@ -121,10 +133,22 @@ export async function reloadExpenses() {
 }
 
 export async function reloadParents() {
-  const parents = await db.listParents();
+  const [parents, allSubs] = await Promise.all([
+    db.listParents(),
+    db.listAllStudentSubscriptions().catch(() => []),
+  ]);
+  const subsByStudentId = {};
+  (allSubs || []).forEach((sub) => {
+    if (!subsByStudentId[sub.student_id]) subsByStudentId[sub.student_id] = [];
+    subsByStudentId[sub.student_id].push(sub);
+  });
   store.PARENTS = parents.map((p) => ({
     id: p.id, name: p.full_name, phone: p.phone, email: p.email,
-    children: (p.children || []).map(mapStudent),
+    children: (p.children || []).map((c) => {
+      const mapped = mapStudent(c);
+      mapped.activeSubscriptions = (subsByStudentId[c.id] || []).filter((x) => x.status === "ACTIVE");
+      return mapped;
+    }),
   }));
   return store.PARENTS;
 }
@@ -154,17 +178,29 @@ export async function reloadTotals() {
 // --- main loader (startup only) -----------------------------------------------
 export async function loadAll() {
   const [settings, modules, classes, groups, teachers, staff, plans, subTypes, subStats,
-         students, expenses, cats, anns, parents, totals, allAcomptes, allAbsences] = await Promise.all([
+         students, expenses, cats, anns, parents, totals, allAcomptes, allAbsences, allStudentSubs] = await Promise.all([
     db.getSettings().catch(() => null), db.listModules(), db.listClasses(), db.listGroups(),
     db.listTeachers(), db.listStaff(), db.listPlans(), db.listSubTypes(), db.subStats(),
     db.listStudents(), db.listExpenses(), db.listExpenseCategories(), db.listAnnouncements(),
     db.listParents(), db.dashboardTotals().catch(() => ({})),
     db.listAcomptes().catch(() => []), db.listAbsences().catch(() => []),
+    db.listAllStudentSubscriptions().catch(() => []),
   ]);
+
+  // Build lookup: student_id → their subscriptions
+  const subsByStudentId = {};
+  (allStudentSubs || []).forEach((sub) => {
+    if (!subsByStudentId[sub.student_id]) subsByStudentId[sub.student_id] = [];
+    subsByStudentId[sub.student_id].push(sub);
+  });
+  const withActiveSubs = (mapped) => {
+    mapped.activeSubscriptions = (subsByStudentId[mapped.id] || []).filter((x) => x.status === "ACTIVE");
+    return mapped;
+  };
 
   const statsById = Object.fromEntries(subStats.map((s) => [s.id, s]));
   const grps = groups.map(mapGroup);
-  const studs = students.map(mapStudent);
+  const studs = students.map((s) => withActiveSubs(mapStudent(s)));
 
   store.SETTINGS = settings;
   store.MODULES = modules.map((m) => m.name);
@@ -191,7 +227,7 @@ export async function loadAll() {
   store.EXPENSES = expenses.map(mapExpense);
   store.EXPENSE_CATEGORIES = cats.map((c) => c.name);
   store.ANNOUNCEMENTS = anns.map(mapAnn);
-  store.PARENTS = parents.map((p) => ({ id: p.id, name: p.full_name, phone: p.phone, email: p.email, children: (p.children || []).map(mapStudent) }));
+  store.PARENTS = parents.map((p) => ({ id: p.id, name: p.full_name, phone: p.phone, email: p.email, children: (p.children || []).map((c) => withActiveSubs(mapStudent(c))) }));
   store.NOTIFS = [];
   store.PARENT_NOTIFS = [];
   store.totals = {

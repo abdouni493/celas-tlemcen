@@ -1214,11 +1214,23 @@ function PlannerScreen() {
   const addModule = async () => {
     if (!newMod.trim()) return;
     try {
-      await db.addModule(newMod.trim());
+      const created = await db.addModule(newMod.trim());
+      const createdModule = Array.isArray(created) ? created[0] : created;
+      if (createdModule) {
+        store.MODULES_FULL = [...(store.MODULES_FULL || [])];
+        const exists = (store.MODULES_FULL || []).some((m) => m.id === createdModule.id);
+        if (!exists) {
+          store.MODULES_FULL.push(createdModule);
+        }
+        store.MODULES = (store.MODULES_FULL || []).map((m) => m.name).filter(Boolean);
+      }
       setF("module", newMod.trim());
-      setNewMod(""); setModModal(false);
+      setNewMod("");
+      setModModal(false);
       setModules([...store.MODULES]);
-    } catch (e) { alert(e.message); }
+    } catch (e) {
+      alert(e.message);
+    }
   };
 
   const addGroup = async () => {
@@ -1301,7 +1313,7 @@ function PlannerScreen() {
         {planType === "COURSES" && (
           <Field label={t.module}>
             <div style={{ display: "flex", gap: 8 }}>
-              <Select value={form.module} onChange={(e) => setF("module", e.target.value)} style={{ flex: 1 }}>{modules.map((m) => <option key={m}>{m}</option>)}</Select>
+              <Select value={form.module} onChange={(e) => setF("module", e.target.value)} style={{ flex: 1 }}>{modules.map((m) => <option key={m} value={m}>{m}</option>)}</Select>
               <Btn variant="soft" size="sm" onClick={() => setModModal(true)}>➕ {t.newModule}</Btn>
             </div>
           </Field>
@@ -1862,14 +1874,22 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--grad-primary)", color: "#fff", display: "grid", placeItems: "center", fontWeight: 800, fontSize: 15, boxShadow: "0 6px 16px -8px rgba(124,58,237,.6)" }}>{initials(s)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{s.firstName} {s.lastName}</h3>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>{s.className} · {s.group}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>
+                      {s.activeSubscriptions && s.activeSubscriptions.length > 1
+                        ? s.activeSubscriptions.map((sub) => sub.class_name).filter(Boolean).join(" · ")
+                        : `${s.className || "—"} · ${s.group || "—"}`}
+                    </p>
                   </div>
                   <Menu items={actions(s)} />
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
                   {s.isFree && <Badge tone="green">🎁 {t.specialCases}</Badge>}
                   <Badge tone={s.status === "ACTIVE" ? "green" : "red"}>{s.status === "ACTIVE" ? t.active : t.expired}</Badge>
-                  {s.seancesRemaining != null && <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining}/{s.seancesTotal} {t.seances}</Badge>}
+                  {s.activeSubscriptions && s.activeSubscriptions.length > 0
+                    ? s.activeSubscriptions.map((sub, idx) => (
+                        <Badge key={idx} tone="primary">🎫 {sub.sub_type_name || sub.class_name || "—"}</Badge>
+                      ))
+                    : s.seancesRemaining != null && <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining}/{s.seancesTotal} {t.seances}</Badge>}
                   {!s.isFree && (s.debt > 0 ? <Badge tone="red">{t.debt} {fmt(s.debt)}</Badge> : <Badge tone="green">{t.paid}</Badge>)}
                 </div>
               </motion.div>
@@ -3912,14 +3932,14 @@ function PaymentsCollectScreen() {
 const ME_STUDENT = () => STUDENTS[0] || {};
 const ME_TEACHER = () => TEACHERS[0] || {};
 
-function TimetableGrid({ teacherId, classId }) {
+function TimetableGrid({ teacherId, classIds }) {
   const t = useT();
   const slots = ["08:00", "09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"];
   const days = t.days.slice(0, 6);
   const source = teacherId
     ? PLANS.filter((p) => p.teacherId === teacherId)
-    : classId
-      ? PLANS.filter((p) => p.classId === classId)
+    : classIds && classIds.length > 0
+      ? PLANS.filter((p) => classIds.includes(p.classId))
       : PLANS;
   const colorFor = (p) => {
     const palette = ["var(--grad-primary)", "var(--grad-green)", "var(--grad-amber)", "var(--grad-sky)", "var(--grad-red)"];
@@ -4720,6 +4740,7 @@ function Shell({ role, lang, setLang, onSignOut }) {
   const profile = useProfile();
   const meTeacher = role === "TEACHER" ? (TEACHERS.find((x) => x.id === profile?.teacher_id) || null) : null;
   const meStudent = role === "STUDENT" ? (STUDENTS.find((x) => x.id === profile?.student_id) || null) : null;
+  const meParent = role === "PARENT" ? (PARENTS.find((x) => x.id === profile?.parent_id) || null) : null;
   const nav = NAV[role];
   const [active, setActive] = useState(() => {
     try {
@@ -4785,7 +4806,27 @@ function Shell({ role, lang, setLang, onSignOut }) {
   // adjust router for profile title screens
   let content = renderScreen(role, active);
   if (active === "myProfile" || active === "myAccount") content = <ProfileWrap which={active} />;
-  if (active === "timetable") content = <div><PageHead icon="🗓️" title={t.timetable} sub={meTeacher ? `${meTeacher.firstName} ${meTeacher.lastName}` : meStudent ? `${meStudent.firstName} ${meStudent.lastName}` : undefined} /><TimetableGrid teacherId={meTeacher?.id} classId={meStudent?.classId} /></div>;
+  if (active === "timetable") {
+    const timetableClassIds = role === "STUDENT" && meStudent
+      ? [...new Set([
+          meStudent.classId,
+          ...(meStudent.activeSubscriptions || []).map((s) => s.class_id),
+        ].filter(Boolean))]
+      : role === "PARENT" && meParent
+        ? [...new Set(
+            (meParent.children || []).flatMap((c) => [
+              c.classId,
+              ...(c.activeSubscriptions || []).map((s) => s.class_id),
+            ]).filter(Boolean)
+          )]
+        : null;
+    content = (
+      <div>
+        <PageHead icon="🗓️" title={t.timetable} sub={meTeacher ? `${meTeacher.firstName} ${meTeacher.lastName}` : meStudent ? `${meStudent.firstName} ${meStudent.lastName}` : undefined} />
+        <TimetableGrid teacherId={meTeacher?.id} classIds={timetableClassIds} />
+      </div>
+    );
+  }
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="sms app-bg" style={{ height: "100vh", display: "flex", flexDirection: "column" }}>

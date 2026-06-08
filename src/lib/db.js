@@ -118,13 +118,7 @@ export const db = {
   updateStudent: (id, patch) => supabase.from("students").update(patch).eq("id", id).select().single().then(ok),
   deleteStudent: (id) => supabase.from("students").delete().eq("id", id).then(ok),
   assignSubscription: async (studentId, sub, startDate, expiryDate, planInfo) => {
-    // Mark any currently-active history record as EXPIRED
-    try {
-      await supabase.from("student_subscriptions")
-        .update({ status: "EXPIRED", ended_at: new Date().toISOString() })
-        .eq("student_id", studentId).eq("status", "ACTIVE");
-    } catch (_) {}
-    // Record new subscription in history (graceful — table may not exist yet)
+    // Add new subscription alongside any existing ones (multiple active allowed)
     try {
       await supabase.from("student_subscriptions").insert({
         student_id: studentId,
@@ -138,13 +132,14 @@ export const db = {
         teacher_name: planInfo?.teacherName || "",
         total_price: sub.total || 0,
         seances_total: sub.seancesCount || 0,
+        seances_remaining: sub.seancesCount || 0,
         start_date: startDate,
         expiry_date: expiryDate,
         expiry_enabled: sub.expiryEnabled || false,
         status: "ACTIVE",
       });
     } catch (_) {}
-    // Update student record + sync class/group from plan
+    // Update student's primary subscription fields (used as fallback display)
     return supabase.from("students").update({
       sub_type_id: sub.id, sub_price: sub.total, final_price: sub.total, discount_pct: 0,
       seances_total: sub.seancesCount, seances_remaining: sub.seancesCount,
@@ -159,8 +154,11 @@ export const db = {
     supabase.from("student_subscriptions").select("*")
       .eq("student_id", studentId).order("assigned_at", { ascending: false }).then(ok),
 
+  listAllStudentSubscriptions: () =>
+    supabase.from("student_subscriptions").select("*")
+      .order("assigned_at", { ascending: false }).then(ok),
+
   removeStudentSubscription: async (studentId, subRecordId) => {
-    // Mark history record as REMOVED
     if (subRecordId) {
       try {
         await supabase.from("student_subscriptions")
@@ -168,7 +166,18 @@ export const db = {
           .eq("id", subRecordId);
       } catch (_) {}
     }
-    // Clear subscription + class/group on the student
+    // Check if any active subscriptions remain after removal
+    let remaining = [];
+    try {
+      remaining = await supabase.from("student_subscriptions")
+        .select("id, class_id, group_id, sub_type_id, seances_total, start_date, expiry_date, expiry_enabled, total_price")
+        .eq("student_id", studentId).eq("status", "ACTIVE").then(ok);
+    } catch (_) {}
+    if (remaining && remaining.length > 0) {
+      // Student still has active subscriptions — just return the current student record
+      return supabase.from("students").select("*").eq("id", studentId).single().then(ok);
+    }
+    // No active subscriptions remain — clear all subscription fields
     return supabase.from("students").update({
       sub_type_id: null, sub_price: 0, final_price: 0, discount_pct: 0,
       seances_total: null, seances_remaining: null, debt_seance_used: false,
