@@ -119,8 +119,9 @@ export const db = {
   deleteStudent: (id) => supabase.from("students").delete().eq("id", id).then(ok),
   assignSubscription: async (studentId, sub, startDate, expiryDate, planInfo) => {
     // Add new subscription alongside any existing ones (multiple active allowed)
+    let subRecordId = null;
     try {
-      await supabase.from("student_subscriptions").insert({
+      const rec = await supabase.from("student_subscriptions").insert({
         student_id: studentId,
         sub_type_id: sub.id,
         sub_type_name: sub.name || "",
@@ -137,10 +138,11 @@ export const db = {
         expiry_date: expiryDate,
         expiry_enabled: sub.expiryEnabled || false,
         status: "ACTIVE",
-      });
+      }).select("id").single().then(ok);
+      subRecordId = rec?.id || null;
     } catch (_) {}
     // Update student's primary subscription fields (used as fallback display)
-    return supabase.from("students").update({
+    const student = await supabase.from("students").update({
       sub_type_id: sub.id, sub_price: sub.total, final_price: sub.total, discount_pct: 0,
       seances_total: sub.seancesCount, seances_remaining: sub.seancesCount,
       start_date: startDate, expiry_date: expiryDate, expiry_enabled: sub.expiryEnabled,
@@ -148,6 +150,7 @@ export const db = {
       class_id: planInfo?.classId || null,
       group_id: planInfo?.groupId || null,
     }).eq("id", studentId).select().single().then(ok);
+    return { student, subRecordId };
   },
 
   listStudentSubscriptions: (studentId) =>
@@ -160,21 +163,32 @@ export const db = {
 
   removeStudentSubscription: async (studentId, subRecordId) => {
     if (subRecordId) {
+      // Delete payments linked to this subscription
+      try {
+        await supabase.from("payments").delete().eq("subscription_id", subRecordId);
+      } catch (_) {}
+      // Mark the subscription record as REMOVED
       try {
         await supabase.from("student_subscriptions")
           .update({ status: "REMOVED", ended_at: new Date().toISOString() })
           .eq("id", subRecordId);
       } catch (_) {}
     }
-    // Check if any active subscriptions remain after removal
-    let remaining = [];
+    // Recalculate students.paid from remaining payments
     try {
-      remaining = await supabase.from("student_subscriptions")
+      const remaining = await supabase.from("payments").select("amount").eq("student_id", studentId).then(ok);
+      const totalPaid = (remaining || []).reduce((sum, p) => sum + Number(p.amount), 0);
+      await supabase.from("students").update({ paid: totalPaid }).eq("id", studentId);
+    } catch (_) {}
+    // Check if any active subscriptions remain
+    let activeSubs = [];
+    try {
+      activeSubs = await supabase.from("student_subscriptions")
         .select("id, class_id, group_id, sub_type_id, seances_total, start_date, expiry_date, expiry_enabled, total_price")
         .eq("student_id", studentId).eq("status", "ACTIVE").then(ok);
     } catch (_) {}
-    if (remaining && remaining.length > 0) {
-      // Student still has active subscriptions — just return the current student record
+    if (activeSubs && activeSubs.length > 0) {
+      // Student still has active subscriptions — return the current record (paid already recalculated above)
       return supabase.from("students").select("*").eq("id", studentId).single().then(ok);
     }
     // No active subscriptions remain — clear all subscription fields
@@ -191,10 +205,11 @@ export const db = {
   paymentsForStudent: (studentId) =>
     supabase.from("payments").select("*").eq("student_id", studentId).order("paid_at", { ascending: false }).then(ok),
   allPayments: () => supabase.from("payments").select("*, students(first_name,last_name)").order("paid_at", { ascending: false }).then(ok),
-  addPayment: async (studentId, amount, method, collectedBy, profileId, collectorName) => {
+  addPayment: async (studentId, amount, method, collectedBy, profileId, collectorName, subscriptionId = null) => {
     const pay = await supabase.from("payments").insert({
       student_id: studentId, amount, method: method || 'cash', collected_by: collectedBy,
       collected_by_profile_id: profileId, collector_name: collectorName,
+      ...(subscriptionId ? { subscription_id: subscriptionId } : {}),
     }).select().single().then(ok);
     const s = await supabase.from("students").select("paid").eq("id", studentId).single().then(ok);
     await supabase.from("students").update({ paid: Number(s.paid) + Number(amount) }).eq("id", studentId).then(ok);

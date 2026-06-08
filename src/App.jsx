@@ -1826,10 +1826,10 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
         classId: subPlan.classId, className: subPlan.className,
         groupId: subPlan.groupId, groupName: subPlan.group, teacherName: subPlan.teacher,
       } : null;
-      await db.assignSubscription(assign.id, subObj, aStart, aExpiry, planInfo);
+      const { subRecordId } = await db.assignSubscription(assign.id, subObj, aStart, aExpiry, planInfo);
       if (!aPayLater && aEffectivePaid > 0) {
         const collectorName = profile?.full_name || "Admin";
-        await db.addPayment(assign.id, aEffectivePaid, aPayMethod, collectorName, profile?.id, collectorName);
+        await db.addPayment(assign.id, aEffectivePaid, aPayMethod, collectorName, profile?.id, collectorName, subRecordId);
       }
       await doRefresh();
       setAssign(null);
