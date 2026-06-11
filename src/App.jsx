@@ -4160,21 +4160,34 @@ function ProfileScreen({ icon, title }) {
 
 function TeacherDashboard() {
   const t = useT();
+  const profile = useProfile();
+  const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
+  const myPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : [];
+  const myClassIds = [...new Set(myPlans.map((p) => p.classId).filter(Boolean))];
+  const today = new Date();
+  const jsDay = today.getDay();
+  const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+  const todayCount = myPlans.filter((p) => (p.days || []).includes(dayOfWeek)).length;
+  const base = me ? (me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 1000) * 20) : 0;
+  const todayStr = today.toLocaleDateString("fr-FR");
   return (
     <div>
-      <PageHead icon="🏠" title={t.dashboard} sub={t.today + " · 28/05/2026"} />
+      <PageHead icon="🏠" title={t.dashboard} sub={t.today + " · " + todayStr} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 16 }}>
-        <StatCard label={t.today} value={3} icon="📅" />
-        <StatCard label={t.myClasses} value={4} icon="👥" tone="primary" />
-        <StatCard label={t.mySalary} value={42000} icon="💵" tone="green" money />
+        <StatCard label={t.today} value={todayCount} icon="📅" />
+        <StatCard label={t.myClasses} value={myClassIds.length} icon="👥" tone="primary" />
+        <StatCard label={t.mySalary} value={base} icon="💵" tone="green" money />
       </div>
       <Panel title={t.nextSessions}>
-        {PLANS.slice(0, 4).map((p) => (
-          <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-            <div><b style={{ fontSize: 13.5 }}>{p.module || p.name}</b><p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group}</p></div>
-            <Badge>{(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</Badge>
-          </div>
-        ))}
+        {myPlans.length === 0
+          ? <Empty title={t.noResults} hint="Aucune séance assignée à ce compte enseignant." />
+          : myPlans.slice(0, 4).map((p) => (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+              <div><b style={{ fontSize: 13.5 }}>{p.module || p.name}</b><p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group}</p></div>
+              <Badge>{(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</Badge>
+            </div>
+          ))
+        }
       </Panel>
     </div>
   );
@@ -4384,12 +4397,21 @@ function AdminAttendanceScreen() {
 }
 
 function AttendanceScreen() {
-  const t = useT(); const [session, setSession] = useState(PLANS[0]?.id || "");
-  const roster = useMemo(() => STUDENTS.slice(0, 12), [session]);
+  const t = useT();
+  const profile = useProfile();
+  const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
+  const myPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : PLANS;
+  const [session, setSession] = useState(myPlans[0]?.id || "");
+  const plan = myPlans.find((p) => p.id === session) || PLANS.find((p) => p.id === session);
+  const roster = useMemo(() => {
+    if (!plan) return [];
+    return STUDENTS.filter((s) =>
+      s.classId === plan.classId || (s.activeSubscriptions || []).some((sub) => sub.class_id === plan.classId)
+    );
+  }, [session]);
   const [marks, setMarks] = useState({});
-  const [debtUsed, setDebtUsed] = useState({}); // studentId -> true once debt séance granted
+  const [debtUsed, setDebtUsed] = useState({});
   const [toast, setToast] = useState(null);
-  const plan = PLANS.find((p) => p.id === session);
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
@@ -4448,7 +4470,7 @@ function AttendanceScreen() {
       <div style={{ marginBottom: 16, maxWidth: 420 }}>
         <Field label={t.selectSession}>
           <Select value={session} onChange={(e) => { setSession(e.target.value); setMarks({}); setDebtUsed({}); }}>
-            {PLANS.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</option>)}
+            {myPlans.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</option>)}
           </Select>
         </Field>
       </div>
@@ -4509,15 +4531,17 @@ function AttendanceScreen() {
 }
 
 function TeacherSalary() {
-  const t = useT(); const me = TEACHERS[0];
-  const base = me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 1000) * 20;
+  const t = useT();
+  const profile = useProfile();
+  const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || TEACHERS[0];
+  const base = me ? (me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 1000) * 20) : 0;
   return (
     <div>
       <PageHead icon="💵" title={t.mySalary} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 16 }}>
         <StatCard label={t.salary} value={base} icon="💼" money />
-        <StatCard label={t.acompte} value={me.acomptes.reduce((s, a) => s + a.amount, 0)} icon="💵" tone="amber" money />
-        <StatCard label={t.absence} value={me.absences.reduce((s, a) => s + a.cost, 0)} icon="📋" tone="red" money />
+        <StatCard label={t.acompte} value={(me?.acomptes || []).reduce((s, a) => s + a.amount, 0)} icon="💵" tone="amber" money />
+        <StatCard label={t.absence} value={(me?.absences || []).reduce((s, a) => s + a.cost, 0)} icon="📋" tone="red" money />
       </div>
       <Panel title={t.history}>
         {[2, 3, 4].map((m) => (
@@ -4531,12 +4555,21 @@ function TeacherSalary() {
 }
 
 function TeacherClasses() {
-  const t = useT(); const [open, setOpen] = useState(null);
-  const myClasses = CLASSES.slice(0, 4);
-  const studentsOf = (c) => STUDENTS.filter((s) => s.classId === c.id);
+  const t = useT();
+  const profile = useProfile();
+  const [open, setOpen] = useState(null);
+  const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
+  const myClassIds = me
+    ? [...new Set(PLANS.filter((p) => p.teacherId === me.id).map((p) => p.classId).filter(Boolean))]
+    : [];
+  const myClasses = CLASSES.filter((c) => myClassIds.includes(c.id));
+  const studentsOf = (c) => STUDENTS.filter((s) =>
+    s.classId === c.id || (s.activeSubscriptions || []).some((sub) => sub.class_id === c.id)
+  );
   return (
     <div>
       <PageHead icon="👥" title={t.myClasses} />
+      {myClasses.length === 0 && <Empty title={t.noResults} hint="Aucune classe assignée à ce compte enseignant." />}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
         {myClasses.map((c) => {
           const studs = studentsOf(c);
