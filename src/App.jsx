@@ -2392,6 +2392,7 @@ function PeopleScreen({ people, kind }) {
   const [view, setView] = useState(null); const [salary, setSalary] = useState(null);
   const [acompte, setAcompte] = useState(null); const [absence, setAbsence] = useState(null);
   const [viewTeacherAtt, setViewTeacherAtt] = useState([]); const [teacherAttFilter, setTeacherAttFilter] = useState("all");
+  const [viewTeacherTab, setViewTeacherTab] = useState("info");
   // teacher payment modal state
   const [salaryTab, setSalaryTab] = useState("seances");
   const [unpaidSeances, setUnpaidSeances] = useState([]);
@@ -2656,72 +2657,130 @@ function PeopleScreen({ people, kind }) {
         )}
       </Modal>
 
-      <Modal open={!!view} onClose={() => { setView(null); setViewTeacherAtt([]); }} title={view ? `${view.firstName} ${view.lastName}` : ""} wide footer={<Btn variant="line" onClick={() => { setView(null); setViewTeacherAtt([]); }}>{t.close}</Btn>}>
+      <Modal open={!!view} onClose={() => { setView(null); setViewTeacherAtt([]); setViewTeacherTab("info"); }} title={view ? `${view.firstName} ${view.lastName}` : ""} wide footer={<Btn variant="line" onClick={() => { setView(null); setViewTeacherAtt([]); setViewTeacherTab("info"); }}>{t.close}</Btn>}>
         {view && (() => {
-          // load teacher attendance when kind === teacher
           if (kind === "teacher" && viewTeacherAtt.length === 0 && view) {
             db.listTeacherAttendance(view.id).then((att) => setViewTeacherAtt(att || [])).catch(() => {});
           }
           const n = netPay(view);
+          const tPlans = PLANS.filter((p) => p.teacherId === view.id);
+          const tClassIds = [...new Set(tPlans.map((p) => p.classId).filter(Boolean))];
+          const seancesWorked = viewTeacherAtt.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
+          const tabs = kind === "teacher"
+            ? [["info", "📋 Infos & Salaire"], ["timetable", "🗓️ Emploi du temps"], ["classes", "👥 Classes"], ["seances", "✅ Séances"]]
+            : [["info", "📋 Infos & Salaire"]];
           return (
-          <div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
-              <Panel title={t.salary}><div className="mono" style={{ fontSize: 16, fontWeight: 800 }}>{fmt(n.base)}</div></Panel>
-              <Panel title={t.acompte}><div className="mono" style={{ fontSize: 16, fontWeight: 800, color: "var(--amber)" }}>{fmt(n.aco)}</div></Panel>
-              <Panel title={t.absence}><div className="mono" style={{ fontSize: 16, fontWeight: 800, color: "var(--red)" }}>{fmt(n.abs)}</div></Panel>
-            </div>
-            <Panel title={t.history}>
-              {[...view.acomptes.map((a) => ({ ...a, type: t.acompte })), ...view.absences.map((a) => ({ ...a, amount: a.cost, type: t.absence }))].map((h, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
-                  <span>{h.date} · {h.type}</span><span className="mono" style={{ fontWeight: 700 }}>{fmt(h.amount)}</span>
+            <div>
+              {/* Tab bar */}
+              <div style={{ display: "flex", gap: 2, marginBottom: 18, borderBottom: "1px solid var(--line)" }}>
+                {tabs.map(([k, label]) => (
+                  <button key={k} onClick={() => setViewTeacherTab(k)} style={{ padding: "9px 14px", border: "none", background: "transparent", cursor: "pointer", fontWeight: viewTeacherTab === k ? 700 : 500, color: viewTeacherTab === k ? "var(--primary-600)" : "var(--muted)", borderBottom: viewTeacherTab === k ? "2px solid var(--primary-600)" : "2px solid transparent", fontSize: 12.5, marginBottom: -1 }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* TAB: Infos & Salaire */}
+              {viewTeacherTab === "info" && (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14, padding: 14, background: "var(--primary-50)", borderRadius: 12, border: "1px solid #EADDFB" }}>
+                    <Row k="📞 Téléphone" v={view.phone || "—"} />
+                    <Row k="✉️ Email" v={view.email || "—"} />
+                    <Row k="💼 Poste" v={view.position || (kind === "teacher" ? "Enseignant" : "Administration")} />
+                    <Row k="📅 Début mensuel" v={view.monthlyStartDate || "—"} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 12, marginBottom: 14 }}>
+                    <Panel title={t.salary}><div className="mono" style={{ fontSize: 16, fontWeight: 800 }}>{fmt(n.base)}</div></Panel>
+                    <Panel title={t.acompte}><div className="mono" style={{ fontSize: 16, fontWeight: 800, color: "var(--amber)" }}>{fmt(n.aco)}</div></Panel>
+                    <Panel title={t.absence}><div className="mono" style={{ fontSize: 16, fontWeight: 800, color: "var(--red)" }}>{fmt(n.abs)}</div></Panel>
+                    {kind === "teacher" && (
+                      <Panel title="Séances travaillées"><div className="mono" style={{ fontSize: 16, fontWeight: 800, color: "var(--primary-600)" }}>{seancesWorked}</div></Panel>
+                    )}
+                  </div>
+                  {kind === "teacher" && (
+                    <Panel title="Modèle de paie" style={{ marginBottom: 14 }}>
+                      <Row k="Type" v={view.payModel === "FIXED" ? "Salaire fixe" : view.payModel === "PER_SEANCE" ? "Par séance" : "Pourcentage"} />
+                      {view.payModel === "FIXED" && <Row k="Salaire mensuel" v={fmt(view.baseSalary || 0)} />}
+                      {view.payModel === "PER_SEANCE" && <Row k="Taux / séance" v={fmt(view.seanceRate || 0)} />}
+                      {view.payModel === "PERCENTAGE" && <><Row k="Pourcentage" v={`${view.pctRate || 0}%`} /><Row k="Min / séance" v={fmt(view.minPerSeance || 0)} /></>}
+                    </Panel>
+                  )}
+                  <Panel title={t.history}>
+                    {[...(view.acomptes || []).map((a) => ({ ...a, type: t.acompte })), ...(view.absences || []).map((a) => ({ ...a, amount: a.cost, type: t.absence }))].map((h, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
+                        <span>{h.date} · {h.type}</span><span className="mono" style={{ fontWeight: 700 }}>{fmt(h.amount)}</span>
+                      </div>
+                    ))}
+                    {(view.acomptes || []).length + (view.absences || []).length === 0 && <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>{t.noResults}</p>}
+                  </Panel>
                 </div>
-              ))}
-              {view.acomptes.length + view.absences.length === 0 && <p style={{ fontSize: 13, color: "var(--muted)" }}>{t.noResults}</p>}
-            </Panel>
-            {kind === "teacher" && (() => {
-              const tPlans = PLANS.filter((p) => p.teacherId === view.id);
-              return (
-                <div style={{ marginTop: 14 }}>
-                  <Panel title={`${t.assignedPlans} · ${tPlans.length}`}>
-                    {tPlans.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>{t.noPlans}</p> : tPlans.map((p) => (
-                      <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+              )}
+
+              {/* TAB: Emploi du temps */}
+              {viewTeacherTab === "timetable" && kind === "teacher" && (
+                <div>
+                  {tPlans.length === 0
+                    ? <Empty title="Aucun emploi du temps" hint="Aucune séance n'est assignée à cet enseignant." />
+                    : <TimetableGrid teacherId={view.id} classIds={null} />
+                  }
+                </div>
+              )}
+
+              {/* TAB: Classes */}
+              {viewTeacherTab === "classes" && kind === "teacher" && (
+                <div>
+                  <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 0 }}>{tPlans.length} séance(s) · {tClassIds.length} classe(s)</p>
+                  {tPlans.length === 0
+                    ? <Empty title="Aucune classe" hint="Aucune séance n'est assignée à cet enseignant." />
+                    : tPlans.map((p) => (
+                      <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.module || p.name}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}–{p.endTime}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{p.className} · {p.group} · {(p.days||[]).map(d=>t.days[d]).join(", ")} · {p.startTime}–{p.endTime}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          <Badge tone="primary">🎓 {p.students}</Badge>
+                          <Badge tone="primary">🎓 {p.students} élèves</Badge>
                           <Badge tone="green">{fmt(p.gains)}</Badge>
                         </div>
                       </div>
-                    ))}
-                  </Panel>
+                    ))
+                  }
                 </div>
-              );
-            })()}
-            {kind === "teacher" && viewTeacherAtt.length > 0 && (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>{t.seanceHistory}</h4>
-                  <FilterChips value={teacherAttFilter} onChange={setTeacherAttFilter} options={[{ v: "all", l: t.all }, { v: "PRESENT", l: t.present }, { v: "ABSENT", l: t.absent }, { v: "LATE", l: t.late }]} />
+              )}
+
+              {/* TAB: Séances */}
+              {viewTeacherTab === "seances" && kind === "teacher" && (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 12, marginBottom: 16 }}>
+                    <Panel title="Total"><div className="mono" style={{ fontSize: 20, fontWeight: 800 }}>{viewTeacherAtt.length}</div></Panel>
+                    <Panel title={t.present}><div className="mono" style={{ fontSize: 20, fontWeight: 800, color: "var(--green)" }}>{viewTeacherAtt.filter(a=>a.status==="PRESENT").length}</div></Panel>
+                    <Panel title={t.late}><div className="mono" style={{ fontSize: 20, fontWeight: 800, color: "var(--amber)" }}>{viewTeacherAtt.filter(a=>a.status==="LATE").length}</div></Panel>
+                    <Panel title={t.absent}><div className="mono" style={{ fontSize: 20, fontWeight: 800, color: "var(--red)" }}>{viewTeacherAtt.filter(a=>a.status==="ABSENT").length}</div></Panel>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                    <FilterChips value={teacherAttFilter} onChange={setTeacherAttFilter} options={[{ v: "all", l: t.all }, { v: "PRESENT", l: t.present }, { v: "ABSENT", l: t.absent }, { v: "LATE", l: t.late }]} />
+                  </div>
+                  {viewTeacherAtt.length === 0
+                    ? <p style={{ color: "var(--muted)", fontSize: 13 }}>Aucun historique de présence disponible.</p>
+                    : viewTeacherAtt.filter((a) => teacherAttFilter === "all" || a.status === teacherAttFilter).map((a, i) => {
+                        const tone = a.status === "PRESENT" ? "green" : a.status === "LATE" ? "amber" : "red";
+                        return (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                            <div>
+                              <span style={{ fontWeight: 600 }}>{a.session_date}</span>
+                              {a.recorded_at && <span style={{ color: "var(--faint)", marginLeft: 6 }}>{new Date(a.recorded_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>}
+                              <span style={{ color: "var(--muted)", marginLeft: 6 }}>· {a.plans?.name || "—"}</span>
+                            </div>
+                            <Badge tone={tone}>{a.status === "PRESENT" ? t.present : a.status === "LATE" ? t.late : t.absent}</Badge>
+                          </div>
+                        );
+                      })
+                  }
                 </div>
-                {viewTeacherAtt.filter((a) => teacherAttFilter === "all" || a.status === teacherAttFilter).map((a, i) => {
-                  const tone = a.status === "PRESENT" ? "green" : a.status === "LATE" ? "amber" : "red";
-                  return (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
-                      <div>
-                        <span style={{ fontWeight: 600 }}>{a.session_date}</span>
-                        {a.recorded_at && <span style={{ color: "var(--faint)", marginLeft: 6 }}>{new Date(a.recorded_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>}
-                        <span style={{ color: "var(--muted)", marginLeft: 6 }}>· {a.plans?.name || "—"}</span>
-                      </div>
-                      <Badge tone={tone}>{a.status === "PRESENT" ? t.present : a.status === "LATE" ? t.late : t.absent}</Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ); })()}
+              )}
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* ---- Teacher / Staff Payment Modal ---- */}
