@@ -3960,7 +3960,7 @@ function TimetableGrid({ teacherId, classIds }) {
   const days = t.days.slice(0, 6);
   const source = teacherId
     ? PLANS.filter((p) => p.teacherId === teacherId)
-    : classIds && classIds.length > 0
+    : Array.isArray(classIds)
       ? PLANS.filter((p) => classIds.includes(p.classId))
       : PLANS;
   const colorFor = (p) => {
@@ -3968,6 +3968,19 @@ function TimetableGrid({ teacherId, classIds }) {
     return palette[(p.teacherId ? parseInt(p.teacherId.replace(/\D/g, "") || "0") : 0) % palette.length];
   };
   const [detail, setDetail] = useState(null);
+
+  if (Array.isArray(classIds) && classIds.length === 0) {
+    return (
+      <Panel>
+        <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--muted)" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🗓️</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 6 }}>Aucun emploi du temps</div>
+          <div style={{ fontSize: 13 }}>Vous n'avez pas encore d'abonnement actif. Contactez l'administration pour vous inscrire à une classe.</div>
+        </div>
+      </Panel>
+    );
+  }
+
   return (
     <>
       <Panel pad={0}>
@@ -4815,12 +4828,23 @@ function Shell({ role, lang, setLang, onSignOut }) {
         })}
       </nav>
      
-      <div style={{ position: "relative", padding: 12, borderTop: "1px solid var(--line)" }}>
-        <button onClick={onSignOut} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, border: "none", cursor: "pointer", background: "transparent", color: "var(--muted)", fontWeight: 600, fontSize: 13.5, justifyContent: collapsed && !isMobile ? "center" : "flex-start" }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--red-bg)"; e.currentTarget.style.color = "var(--red)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--muted)"; }}>
-          <span style={{ fontSize: 18 }}>🚪</span>{!(collapsed && !isMobile) && t.signOut}
-        </button>
+      <div style={{ position: "relative", borderTop: "1px solid var(--line)" }}>
+        {!(collapsed && !isMobile) && profile?.full_name && (
+          <div style={{ padding: "10px 16px 6px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--grad-primary)", display: "grid", placeItems: "center", fontSize: 14, flexShrink: 0 }}>{ROLE_AVATAR[role]}</div>
+            <div style={{ overflow: "hidden" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.full_name}</div>
+              <div style={{ fontSize: 11, color: "var(--faint)" }}>{t.roles?.[role] || role}</div>
+            </div>
+          </div>
+        )}
+        <div style={{ padding: "0 12px 12px" }}>
+          <button onClick={onSignOut} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, border: "none", cursor: "pointer", background: "transparent", color: "var(--muted)", fontWeight: 600, fontSize: 13.5, justifyContent: collapsed && !isMobile ? "center" : "flex-start" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--red-bg)"; e.currentTarget.style.color = "var(--red)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--muted)"; }}>
+            <span style={{ fontSize: 18 }}>🚪</span>{!(collapsed && !isMobile) && t.signOut}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -4883,7 +4907,10 @@ function Shell({ role, lang, setLang, onSignOut }) {
             </AnimatePresence>
           </div>
           <motion.button whileTap={{ scale: 0.92 }} onClick={() => setLang(lang === "fr" ? "ar" : "fr")} style={{ border: "1px solid #EADDFB", background: "var(--grad-primary-soft)", borderRadius: 10, padding: "8px 13px", cursor: "pointer", fontSize: 13, fontWeight: 800, color: "var(--primary-600)" }}>{lang === "fr" ? "ع" : "FR"}</motion.button>
-          <motion.div whileHover={{ scale: 1.06 }} className="sheen" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--grad-primary)", display: "grid", placeItems: "center", fontSize: 17, boxShadow: "0 6px 16px -8px rgba(124,58,237,.6)" }}>{ROLE_AVATAR[role]}</motion.div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {profile?.full_name && <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.full_name}</span>}
+            <motion.div whileHover={{ scale: 1.06 }} className="sheen" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--grad-primary)", display: "grid", placeItems: "center", fontSize: 17, boxShadow: "0 6px 16px -8px rgba(124,58,237,.6)" }}>{ROLE_AVATAR[role]}</motion.div>
+          </div>
         </div>
       </header>
 
