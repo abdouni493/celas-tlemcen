@@ -1728,7 +1728,7 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
         (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, "").replace(/[^a-z0-9]/g, "");
       const first = norm(sFirst);
       const last = norm(sLast);
-      setSEmail(last && first ? `${first}${last}@celas.com` : "");
+      setSEmail(last && first ? `${last}${first}@celas.com` : "");
       setSPassword(last && first ? `${last}${first}123` : "");
     }
   }, [sFirst, sLast, editing]);
