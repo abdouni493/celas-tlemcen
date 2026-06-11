@@ -797,8 +797,8 @@ function AdminDashboard() {
   const [period, setPeriod] = useState("month");
   const debtors = [...STUDENTS].filter((s) => s.debt > 0).sort((a, b) => b.debt - a.debt).slice(0, 5);
   const recent = STUDENTS.flatMap((s) => s.payments.map((p) => ({ ...p, who: `${s.firstName} ${s.lastName}` }))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
-  const studentsPerClass = CLASSES.map((c) => ({ l: c.type === "FORMATION" ? c.name.split(" ")[0] : c.year, v: c.students }));
-  const revByType = SUB_TYPES.map((s, i) => ({ l: s.name.split(" ")[0], v: ri(80, 320) * 1000, color: ["#8B5CF6", "#10B981", "#F59E0B", "#0EA5E9", "#D946EF"][i % 5] }));
+  const studentsPerClass = CLASSES.map((c) => ({ l: c.type === "FORMATION" ? (c.name || "").split(" ")[0] : c.year, v: c.students }));
+  const revByType = SUB_TYPES.map((s, i) => ({ l: (s.name || "").split(" ")[0], v: ri(80, 320) * 1000, color: ["#8B5CF6", "#10B981", "#F59E0B", "#0EA5E9", "#D946EF"][i % 5] }));
   const lowSeances = STUDENTS.filter((s) => s.seancesRemaining != null && s.seancesRemaining <= 2).length;
   const expiredCount = STUDENTS.filter((s) => s.status === "EXPIRED").length;
   const overdueSal = TEACHERS.filter((x) => x.unpaidMonths > 0).length;
@@ -870,7 +870,7 @@ function AdminDashboard() {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }} className="dash-grid">
         <Panel title={`${t.students} / ${t.classes}`}><BarChart data={studentsPerClass} /></Panel>
-        <Panel title={`${t.debt} / ${t.classes}`}><BarChart data={CLASSES.map((c) => ({ l: c.year || c.name.split(" ")[0], v: ri(10, 90) * 1000 }))} grad="red" /></Panel>
+        <Panel title={`${t.debt} / ${t.classes}`}><BarChart data={CLASSES.map((c) => ({ l: c.year || (c.name || "").split(" ")[0], v: ri(10, 90) * 1000 }))} grad="red" /></Panel>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }} className="dash-grid">
         <Panel title={t.topDebtors}>
@@ -1447,7 +1447,7 @@ function CalendarView({ plans, onClose }) {
                         title={`${p.module || p.name} · ${p.teacher} · ${p.group}`}
                         style={{ background: colorFor(p), color: "#fff", borderRadius: 8, padding: "6px 8px", fontSize: 10.5, lineHeight: 1.3, boxShadow: "0 4px 12px -4px rgba(0,0,0,.3)" }}>
                         <b style={{ display: "block", fontSize: 11 }}>{p.module || p.name}</b>
-                        <span style={{ opacity: 0.92 }}>{p.teacher.split(" ")[0]} · {p.group}</span>
+                        <span style={{ opacity: 0.92 }}>{(p.teacher || "").split(" ")[0]} · {p.group}</span>
                         <span style={{ display: "block", opacity: 0.85 }}>{p.startTime}–{p.endTime}</span>
                       </motion.div>
                     ))}
@@ -3278,7 +3278,7 @@ function ReportsScreen() {
               </div>
             ))}
           </Panel>
-          <Panel title={`${t.revenueBreakdown}`}><BarChart data={SUB_TYPES.map((s) => ({ l: s.name.split(" ")[0], v: ri(80, 300) * 1000 }))} grad="green" /></Panel>
+          <Panel title={`${t.revenueBreakdown}`}><BarChart data={SUB_TYPES.map((s) => ({ l: (s.name || "").split(" ")[0], v: ri(80, 300) * 1000 }))} grad="green" /></Panel>
           <Panel title={`${t.expenseBreakdown}`}><BarChart data={[...new Set(EXPENSES.map((e) => e.category))].map((c) => ({ l: c, v: EXPENSES.filter((e) => e.category === c).reduce((s, e) => s + e.amount, 0) }))} grad="amber" /></Panel>
           <Panel title={`${t.revenue} vs ${t.expenses} · ${t.byMonth}`}>
             <LineChart labels={t.months.slice(0, 5)} series={[
@@ -3341,11 +3341,11 @@ function AnalyticsContent() {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="dash-grid">
       <Panel title={t.enrollment + " · " + t.growth}><LineChart labels={t.months.slice(0, 8)} series={[{ data: [120, 135, 150, 162, 178, 190, 205, 218], color: "#8B5CF6" }]} /></Panel>
       <Panel title={t.retention}><Donut data={[{ l: t.active, v: totals.activeSubs, color: "#10B981" }, { l: t.expired, v: STUDENTS.length - totals.activeSubs, color: "#EF4444" }]} /></Panel>
-      <Panel title={t.attendanceRate + " / " + t.classes}><BarChart data={CLASSES.map((c) => ({ l: c.year || c.name.split(" ")[0], v: ri(72, 98) }))} grad="green" /></Panel>
-      <Panel title={t.revenue + " / " + t.classes}><BarChart data={CLASSES.map((c) => ({ l: c.year || c.name.split(" ")[0], v: ri(40, 220) * 1000 }))} /></Panel>
+      <Panel title={t.attendanceRate + " / " + t.classes}><BarChart data={CLASSES.map((c) => ({ l: c.year || (c.name || "").split(" ")[0], v: ri(72, 98) }))} grad="green" /></Panel>
+      <Panel title={t.revenue + " / " + t.classes}><BarChart data={CLASSES.map((c) => ({ l: c.year || (c.name || "").split(" ")[0], v: ri(40, 220) * 1000 }))} /></Panel>
       <Panel title={t.debtAging}><BarChart data={[{ l: "0-30j", v: 120000 }, { l: "30-60j", v: 80000 }, { l: "60-90j", v: 45000 }, { l: ">90j", v: 22000 }]} grad="red" /></Panel>
       <Panel title={t.seances + " · " + t.byMonth}><LineChart labels={t.months.slice(0, 8)} series={[{ data: [340, 380, 360, 420, 450, 410, 480, 460], color: "#F59E0B" }]} /></Panel>
-      <Panel title={t.avgRevenue + " / " + t.students}><BarChart data={CLASSES.map((c) => ({ l: c.year || c.name.split(" ")[0], v: ri(4, 12) * 1000 }))} grad="sky" /></Panel>
+      <Panel title={t.avgRevenue + " / " + t.students}><BarChart data={CLASSES.map((c) => ({ l: c.year || (c.name || "").split(" ")[0], v: ri(4, 12) * 1000 }))} grad="sky" /></Panel>
       <Panel title={t.collectionRate + " · " + t.byMonth}><LineChart labels={t.months.slice(0, 8)} series={[{ data: [78, 82, 80, 88, 91, 86, 93, 90], color: "#10B981" }]} /></Panel>
     </div>
   );
@@ -4059,7 +4059,7 @@ function TimetableGrid({ teacherId, classIds }) {
                       {p && <motion.div whileHover={{ scale: 1.04 }} onClick={() => setDetail(p)}
                         style={{ background: colorFor(p), color: "#fff", borderRadius: 10, padding: "8px 9px", fontSize: 11, cursor: "pointer", boxShadow: "0 4px 12px -5px rgba(0,0,0,.35)" }}>
                         <b style={{ display: "block", fontSize: 11.5 }}>{p.module || p.name}</b>
-                        <div style={{ opacity: 0.92, marginTop: 2 }}>👨‍🏫 {p.teacher.split(" ")[0]}</div>
+                        <div style={{ opacity: 0.92, marginTop: 2 }}>👨‍🏫 {(p.teacher || "").split(" ")[0]}</div>
                         <div style={{ opacity: 0.85 }}>👥 {p.group}</div>
                         <div style={{ opacity: 0.85 }}>{p.startTime}–{p.endTime}</div>
                       </motion.div>}
@@ -4109,7 +4109,7 @@ function StudentHome() {
             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.module || p.name}</div>
-                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>👨‍🏫 {p.teacher.split(" ")[0]} · 👥 {p.group}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>👨‍🏫 {(p.teacher || "").split(" ")[0]} · 👥 {p.group}</div>
               </div>
               <Badge tone="primary">{(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}–{p.endTime}</Badge>
             </div>
@@ -4261,7 +4261,7 @@ function AdminAttendanceScreen() {
   const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
   const todayStr = today.toISOString().slice(0, 10);
   const dayNames = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-  const todayLabel = `${dayNames[dayOfWeek]} ${todayStr.split("-").reverse().join("/")}`;
+  const todayLabel = `${dayNames[dayOfWeek]} ${(todayStr || "").split("-").reverse().join("/")}`;
 
   const [todayPlans, setTodayPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
