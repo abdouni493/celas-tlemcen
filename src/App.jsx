@@ -1774,6 +1774,10 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
   };
 
   const doSaveStudent = async () => {
+    if (!editing && (!sEmail || !sPassword)) {
+      alert("Email et mot de passe sont requis pour créer un compte étudiant.");
+      return;
+    }
     const payload = {
       first_name: sFirst, last_name: sLast,
       birth_date: sBirth || null, birth_place: sBirthPlace || null,
@@ -1782,19 +1786,24 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
     };
     try {
       let created;
-      if (editing) { created = await db.updateStudent(editing.id, payload); }
-      else { created = await db.addStudent(payload); }
-      if (sEmail && sPassword && !editing) {
-        try {
-          const { data: { session: adminSession } } = await db.auth.getSession();
-          const { error: signUpErr } = await db.auth.signUp(sEmail, sPassword, {
-            role: "STUDENT", full_name: `${sFirst} ${sLast}`, student_id: created.id,
-          });
-          if (signUpErr) throw signUpErr;
-          if (adminSession?.access_token) {
-            await db.auth.setSession({ access_token: adminSession.access_token, refresh_token: adminSession.refresh_token });
-          }
-        } catch (ae) { alert("Étudiant créé mais compte auth échoué: " + ae.message); }
+      if (editing) {
+        created = await db.updateStudent(editing.id, payload);
+      } else {
+        created = await db.addStudent(payload);
+        const { data: { session: adminSession } } = await db.auth.getSession();
+        const { error: signUpErr } = await db.auth.signUp(sEmail, sPassword, {
+          role: "STUDENT", full_name: `${sFirst} ${sLast}`, student_id: created.id,
+        });
+        if (signUpErr) {
+          await db.deleteStudent(created.id).catch(() => {});
+          const msg = signUpErr.message?.toLowerCase().includes("already registered")
+            ? `L'email "${sEmail}" est déjà utilisé. Supprimez l'ancien compte ou modifiez l'email manuellement.`
+            : signUpErr.message;
+          throw new Error(msg);
+        }
+        if (adminSession?.access_token) {
+          await db.auth.setSession({ access_token: adminSession.access_token, refresh_token: adminSession.refresh_token });
+        }
       }
       await doRefresh();
       setCreate(false);
