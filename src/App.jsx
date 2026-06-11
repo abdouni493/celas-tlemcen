@@ -2740,7 +2740,7 @@ function PeopleScreen({ people, kind }) {
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                           <Badge tone="primary">🎓 {p.students} élèves</Badge>
-                          <Badge tone="green">{fmt(p.gains)}</Badge>
+                          {view.payModel !== "FIXED" && <Badge tone="green">{fmt(p.gains)}</Badge>}
                         </div>
                       </div>
                     ))
@@ -4618,52 +4618,74 @@ function TeacherClasses() {
   const profile = useProfile();
   const [open, setOpen] = useState(null);
   const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
-  const myClassIds = me
-    ? [...new Set(PLANS.filter((p) => p.teacherId === me.id).map((p) => p.classId).filter(Boolean))]
-    : [];
-  const myClasses = CLASSES.filter((c) => myClassIds.includes(c.id));
-  const studentsOf = (c) => STUDENTS.filter((s) =>
-    s.classId === c.id || (s.activeSubscriptions || []).some((sub) => sub.class_id === c.id)
+  const myPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : [];
+
+  const studentsOfPlan = (p) => STUDENTS.filter((s) =>
+    s.classId === p.classId || (s.activeSubscriptions || []).some((sub) => sub.class_id === p.classId)
   );
+
   return (
     <div>
       <PageHead icon="👥" title={t.myClasses} />
-      {myClasses.length === 0 && <Empty title={t.noResults} hint="Aucune classe assignée à ce compte enseignant." />}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
-        {myClasses.map((c) => {
-          const studs = studentsOf(c);
-          return (
-            <motion.div key={c.id} whileHover={{ y: -5, boxShadow: "var(--shadow-lift)" }} className="gcard" style={{ ...card, padding: 18, cursor: "pointer" }} onClick={() => setOpen(c)}>
-              <Badge tone={c.type === "COURSES" ? "primary" : "green"}>{c.type === "COURSES" ? t.courses : t.formation}</Badge>
-              <h3 className="serif" style={{ margin: "10px 0 4px", fontSize: 17 }}>{classLabel(c)}</h3>
-              <p style={{ margin: 0, fontSize: 12.5, color: "var(--muted)" }}>🎓 {c.students} {t.enrolled} · 👥 {c.groups} {t.groups}</p>
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--primary-600)", fontWeight: 700 }}>{t.seeAllStudents} ›</div>
-            </motion.div>
-          );
-        })}
-      </div>
-      <Modal open={!!open} onClose={() => setOpen(null)} title={open ? `${classLabel(open)} · ${t.studentsInClass}` : ""} wide footer={<Btn variant="line" onClick={() => setOpen(null)}>{t.close}</Btn>}>
-        {open && (() => { const studs = studentsOf(open); return (
-          <div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              <Badge tone="primary">🎓 {studs.length} {t.students.toLowerCase()}</Badge>
-              <Badge tone="green">✅ {studs.filter((s) => s.status === "ACTIVE").length} {t.active.toLowerCase()}</Badge>
-              <Badge tone="red">⌛ {studs.filter((s) => s.status === "EXPIRED").length} {t.expired.toLowerCase()}</Badge>
-            </div>
-            {studs.length === 0 ? <Empty title={t.noResults} /> : studs.map((s) => (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--grad-primary-soft)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800, color: "var(--primary-600)" }}>{s.firstName[0]}{s.lastName[0]}</div>
-                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.firstName} {s.lastName} <span style={{ color: "var(--muted)", fontWeight: 400 }}>· {s.group}</span></span>
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining} {t.seances}</Badge>
-                  <Badge tone={s.status === "ACTIVE" ? "green" : "red"}>{s.status === "ACTIVE" ? t.active : t.expired}</Badge>
-                </div>
-              </div>
-            ))}
+      {myPlans.length === 0
+        ? <Empty title={t.noResults} hint="Aucune séance assignée à ce compte enseignant." />
+        : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
+            {myPlans.map((p) => {
+              const studs = studentsOfPlan(p);
+              return (
+                <motion.div key={p.id} whileHover={{ y: -5, boxShadow: "var(--shadow-lift)" }} className="gcard" style={{ ...card, padding: 18, cursor: "pointer" }} onClick={() => setOpen(p)}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    <Badge tone="primary">{p.className}</Badge>
+                    <Badge tone="gray">👥 {p.group}</Badge>
+                  </div>
+                  <h3 className="serif" style={{ margin: "0 0 6px", fontSize: 16 }}>{p.module || p.name}</h3>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>{(p.days||[]).map(d=>t.days[d]).join(", ")} · {p.startTime}–{p.endTime}</p>
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--primary-600)" }}>🎓 {studs.length} {t.students.toLowerCase()}</span>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>{t.seeAllStudents} ›</span>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
-        ); })()}
+        )
+      }
+
+      <Modal open={!!open} onClose={() => setOpen(null)}
+        title={open ? `${open.module || open.name} · ${open.className} · ${open.group}` : ""}
+        wide footer={<Btn variant="line" onClick={() => setOpen(null)}>{t.close}</Btn>}>
+        {open && (() => {
+          const studs = studentsOfPlan(open);
+          return (
+            <div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                <Badge tone="gray">{(open.days||[]).map(d=>t.days[d]).join(", ")} · {open.startTime}–{open.endTime}</Badge>
+                <Badge tone="primary">🎓 {studs.length} {t.students.toLowerCase()}</Badge>
+                <Badge tone="green">✅ {studs.filter((s) => s.status === "ACTIVE").length} {t.active.toLowerCase()}</Badge>
+                <Badge tone="red">⌛ {studs.filter((s) => s.status === "EXPIRED").length} {t.expired.toLowerCase()}</Badge>
+              </div>
+              {studs.length === 0
+                ? <Empty title={t.noResults} />
+                : studs.map((s) => (
+                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--grad-primary-soft)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800, color: "var(--primary-600)" }}>{s.firstName[0]}{s.lastName[0]}</div>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.firstName} {s.lastName}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>👥 {s.group}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Badge tone={s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining ?? "∞"} {t.seances}</Badge>
+                      <Badge tone={s.status === "ACTIVE" ? "green" : "red"}>{s.status === "ACTIVE" ? t.active : t.expired}</Badge>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );
