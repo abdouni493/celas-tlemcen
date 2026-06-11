@@ -1728,8 +1728,8 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
         (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, "").replace(/[^a-z0-9]/g, "");
       const first = norm(sFirst);
       const last = norm(sLast);
-      setSEmail(last && first ? `${last}+${first}@celas.com` : "");
-      setSPassword(first ? `${first}+123` : "");
+      setSEmail(last && first ? `${first}${last}@celas.com` : "");
+      setSPassword(last && first ? `${last}${first}123` : "");
     }
   }, [sFirst, sLast, editing]);
 
@@ -1940,8 +1940,8 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
           <Field label={t.birthPlace}><Input value={sBirthPlace} onChange={(e) => setSBirthPlace(e.target.value)} /></Field>
           <Field label={t.idCard}><Input value={sIdCard} onChange={(e) => setSIdCard(e.target.value)} /></Field>
           <Field label={t.schoolNum}><Input value={sSchoolNum} onChange={(e) => setSSchoolNum(e.target.value)} /></Field>
-          <Field label={t.email}><Input type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)} placeholder="nom+prénom@celas.com" /></Field>
-          <Field label={t.password}><Input type="text" value={sPassword} onChange={(e) => setSPassword(e.target.value)} placeholder="prénom+123" /></Field>
+          <Field label={t.email}><Input type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)} placeholder="prénomnom@celas.com" /></Field>
+          <Field label={t.password}><Input type="text" value={sPassword} onChange={(e) => setSPassword(e.target.value)} placeholder="nomprenom123" /></Field>
         </div>
       </Modal>
 
