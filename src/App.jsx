@@ -976,7 +976,7 @@ function ClassesScreen() {
   const [modal, setModal] = useState(false); const [ctype, setCtype] = useState("COURSES");
   const [del, setDel] = useState(null); const [view, setView] = useState(null);
   const [viewMode, setViewMode] = useState("cards");
-  const [form, setForm] = useState({ name: "", level: "LYCEE", year: "2ème", description: "" });
+  const [form, setForm] = useState({ name: "", level: "", year: "", description: "" });
   const [classes, setClasses] = useState(CLASSES);
   const [formationLevels, setFormationLevels] = useState(["A1", "A2", "B1", "B2", "C1", "C2"]);
   const [lvlModal, setLvlModal] = useState(false); const [newLvl, setNewLvl] = useState("");
@@ -1064,14 +1064,14 @@ function ClassesScreen() {
         <Field label={t.type}>
           <div style={{ display: "flex", gap: 10 }}>
             {[["COURSES", t.courses], ["FORMATION", t.formation]].map(([v, l]) => (
-              <button key={v} onClick={() => { setCtype(v); setF("level", v === "FORMATION" ? (formationLevels[0] || "A1") : "LYCEE"); }} style={{ flex: 1, padding: "12px", borderRadius: 11, border: "1px solid " + (ctype === v ? "var(--primary)" : "var(--line)"), background: ctype === v ? "var(--primary-50)" : "#fff", color: ctype === v ? "var(--primary-600)" : "var(--muted)", fontWeight: 700, cursor: "pointer" }}>{l}</button>
+              <button key={v} onClick={() => { setCtype(v); setF("level", ""); setF("year", ""); }} style={{ flex: 1, padding: "12px", borderRadius: 11, border: "1px solid " + (ctype === v ? "var(--primary)" : "var(--line)"), background: ctype === v ? "var(--primary-50)" : "#fff", color: ctype === v ? "var(--primary-600)" : "var(--muted)", fontWeight: 700, cursor: "pointer" }}>{l}</button>
             ))}
           </div>
         </Field>
         {ctype === "COURSES" ? (
           <>
-            <Field label={t.level}><Select value={form.level} onChange={(e) => setF("level", e.target.value)}><option value="PRIMARY">Primaire</option><option value="CEM">CEM</option><option value="LYCEE">Lycée</option></Select></Field>
-            <Field label={t.year}><Select value={form.year} onChange={(e) => setF("year", e.target.value)}>{["1ère", "2ème", "3ème", "4ème", "5ème"].map((y) => <option key={y}>{y}</option>)}</Select></Field>
+            <Field label={t.level}><Select value={form.level} onChange={(e) => setF("level", e.target.value)}><option value="">— Sélectionner —</option><option value="PRIMARY">Primaire</option><option value="CEM">CEM</option><option value="LYCEE">Lycée</option></Select></Field>
+            <Field label={t.year}><Select value={form.year} onChange={(e) => setF("year", e.target.value)}><option value="">— Sélectionner —</option>{["1ère", "2ème", "3ème", "4ème", "5ème"].map((y) => <option key={y}>{y}</option>)}</Select></Field>
           </>
         ) : (
           <>
@@ -1079,6 +1079,7 @@ function ClassesScreen() {
             <Field label={t.level}>
               <div style={{ display: "flex", gap: 8 }}>
                 <Select value={form.level} onChange={(e) => setF("level", e.target.value)} style={{ flex: 1 }}>
+                  <option value="">— Sélectionner —</option>
                   {formationLevels.map((l) => <option key={l}>{l}</option>)}
                 </Select>
                 <Btn variant="soft" size="sm" onClick={() => setLvlModal(true)}>➕ {t.newLevel}</Btn>
@@ -1147,7 +1148,7 @@ function PlannerScreen() {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [planType, setPlanType] = useState("COURSES");
-  const [classId, setClassId] = useState(CLASSES[0]?.id);
+  const [classId, setClassId] = useState("");
   const [detail, setDetail] = useState(null);
   const [del, setDel] = useState(null);
   const [showCal, setShowCal] = useState(false);
@@ -1178,12 +1179,12 @@ function PlannerScreen() {
   };
 
   // form state
-  const blank = { name: "", classId: CLASSES[0]?.id, module: MODULES[0] || "", groupId: "", teacherId: TEACHERS[0]?.id, days: [0], startTime: "09:00", endTime: "10:30" };
+  const blank = { name: "", classId: "", module: "", groupId: "", teacherId: "", days: [0], startTime: "09:00", endTime: "10:30" };
   const [form, setForm] = useState(blank);
   const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  const openCreate = () => { setEditing(null); setForm(blank); setPlanType("COURSES"); setClassId(CLASSES[0]?.id); setModal(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ name: p.name, classId: p.classId, module: p.module || MODULES[0] || "", groupId: p.groupId || "", teacherId: p.teacherId, days: p.days && p.days.length ? p.days : [p.day ?? 0], startTime: p.startTime, endTime: p.endTime }); setPlanType(CLASSES.find((c) => c.id === p.classId)?.type || "COURSES"); setClassId(p.classId); setModal(true); };
+  const openCreate = () => { setEditing(null); setForm(blank); setPlanType("COURSES"); setClassId(""); setModal(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ name: p.name, classId: p.classId, module: p.module || "", groupId: p.groupId || "", teacherId: p.teacherId, days: p.days && p.days.length ? p.days : [p.day ?? 0], startTime: p.startTime, endTime: p.endTime }); setPlanType(CLASSES.find((c) => c.id === p.classId)?.type || "COURSES"); setClassId(p.classId); setModal(true); };
 
   const save = async () => {
     const cls = CLASSES.find((c) => c.id === form.classId);
@@ -1307,13 +1308,14 @@ function PlannerScreen() {
         <Field label={t.name}><Input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder={planType === "COURSES" ? "Séance Math" : "—"} /></Field>
         <Field label={t.classes}>
           <Select value={form.classId} onChange={(e) => { setF("classId", e.target.value); setClassId(e.target.value); setPlanType(CLASSES.find((c) => c.id === e.target.value)?.type || "COURSES"); setF("groupId", ""); }}>
+            <option value="">— Sélectionner une classe —</option>
             {CLASSES.map((c) => <option key={c.id} value={c.id}>{classLabel(c)}</option>)}
           </Select>
         </Field>
         {planType === "COURSES" && (
           <Field label={t.module}>
             <div style={{ display: "flex", gap: 8 }}>
-              <Select value={form.module} onChange={(e) => setF("module", e.target.value)} style={{ flex: 1 }}>{modules.map((m) => <option key={m} value={m}>{m}</option>)}</Select>
+              <Select value={form.module} onChange={(e) => setF("module", e.target.value)} style={{ flex: 1 }}><option value="">— Sélectionner un module —</option>{modules.map((m) => <option key={m} value={m}>{m}</option>)}</Select>
               <Btn variant="soft" size="sm" onClick={() => setModModal(true)}>➕ {t.newModule}</Btn>
             </div>
           </Field>
@@ -1327,7 +1329,7 @@ function PlannerScreen() {
             <Btn variant="soft" size="sm" onClick={() => setGrpModal(true)}>➕ {t.newGroup}</Btn>
           </div>
         </Field>
-        <Field label={t.teacher}><Select value={form.teacherId} onChange={(e) => setF("teacherId", e.target.value)}>{TEACHERS.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName}</option>)}</Select></Field>
+        <Field label={t.teacher}><Select value={form.teacherId} onChange={(e) => setF("teacherId", e.target.value)}><option value="">— Sélectionner un enseignant —</option>{TEACHERS.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName}</option>)}</Select></Field>
         <Field label={t.day}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {t.days.map((d, i) => { const sel = (form.days||[]).includes(i); return <button key={i} type="button" onClick={() => setF("days", sel ? (form.days||[]).filter(x=>x!==i) : [...(form.days||[]),i].sort((a,b)=>a-b))} style={{ padding: "6px 14px", borderRadius: 20, border: "1px solid "+(sel?"var(--primary)":"var(--line)"), background: sel?"var(--primary-50)":"#fff", color: sel?"var(--primary-600)":"var(--muted)", fontWeight: sel?700:400, cursor:"pointer", fontSize:12.5 }}>{d}</button>; })}
@@ -1476,7 +1478,7 @@ function SubscriptionsScreen() {
   const [detail, setDetail] = useState(null);
   const [del, setDel] = useState(null);
 
-  const blank = { name: "", planId: PLANS[0]?.id || "", days: 30, seancesCount: 8, perSeance: 750, total: 6000, expiryEnabled: false, totalManual: false };
+  const blank = { name: "", planId: "", days: 30, seancesCount: 8, perSeance: 750, total: 6000, expiryEnabled: false, totalManual: false };
   const [form, setForm] = useState(blank);
   const [studView, setStudView] = useState(null);
   const [studViewPays, setStudViewPays] = useState([]);
@@ -1603,6 +1605,7 @@ function SubscriptionsScreen() {
         <Field label={t.subName}><Input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="Mensuel Standard" /></Field>
         <Field label={t.selectPlan}>
           <Select value={form.planId} onChange={(e) => setF("planId", e.target.value)}>
+            <option value="">— Sélectionner un emploi du temps —</option>
             {PLANS.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {p.className} · {p.group}</option>)}
           </Select>
         </Field>
@@ -1734,7 +1737,7 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
   }, [sFirst, sLast, editing]);
 
   // assignment form
-  const [aSub, setASub] = useState(SUB_TYPES[0]?.id || "");
+  const [aSub, setASub] = useState("");
   const [aStart, setAStart] = useState(new Date().toISOString().slice(0, 10));
   const [aPaidNow, setAPaidNow] = useState("");
   const [aPayMethod, setAPayMethod] = useState("cash");
@@ -1812,7 +1815,11 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
 
   const doDelete = async (s) => {
     setStudents((prev) => prev.filter((x) => x.id !== s.id));
-    try { await db.deleteStudent(s.id); } catch (e) { alert(e.message); doRefresh(); }
+    try {
+      const authUid = await db.findAuthUidByEntity("student", s.id).catch(() => null);
+      if (authUid) await db.deleteAuthUser(authUid).catch(() => {});
+      await db.deleteStudent(s.id);
+    } catch (e) { alert(e.message); doRefresh(); }
   };
 
   const openView = async (s) => {
@@ -1962,6 +1969,7 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
             <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 0 }}>{assign.firstName} {assign.lastName}</p>
             <Field label={t.subscription}>
               <Select value={aSub} onChange={(e) => { setASub(e.target.value); setAPaidNow(""); }}>
+                <option value="">— Sélectionner un abonnement —</option>
                 {SUB_TYPES.map((s) => <option key={s.id} value={s.id}>{s.name} — {fmt(s.total)}</option>)}
               </Select>
             </Field>
@@ -2276,7 +2284,12 @@ function ParentsScreen() {
 
   const doDelete = async (p) => {
     setRows((prev) => prev.filter((x) => x.id !== p.id));
-    try { await db.deleteParent(p.id); await doRefresh(); } catch (e) { alert(e.message); doRefresh(); }
+    try {
+      const authUid = await db.findAuthUidByEntity("parent", p.id).catch(() => null);
+      if (authUid) await db.deleteAuthUser(authUid).catch(() => {});
+      await db.deleteParent(p.id);
+      await doRefresh();
+    } catch (e) { alert(e.message); doRefresh(); }
   };
   const list = rows.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
   const studMatches = STUDENTS.filter((s) => `${s.firstName} ${s.lastName} ${s.className}`.toLowerCase().includes(studQ.toLowerCase())).slice(0, 40);
@@ -2481,6 +2494,9 @@ function PeopleScreen({ people, kind }) {
   const doDelete = async (p) => {
     setRows((prev) => prev.filter((x) => x.id !== p.id));
     try {
+      const entityType = kind === "teacher" ? "teacher" : "staff";
+      const authUid = await db.findAuthUidByEntity(entityType, p.id).catch(() => null);
+      if (authUid) await db.deleteAuthUser(authUid).catch(() => {});
       if (kind === "teacher") { await db.deleteTeacher(p.id); }
       else { await db.deleteStaff(p.id); }
       await doRefresh();
@@ -2957,7 +2973,7 @@ function ExpensesScreen() {
     setRows((prev) => prev.filter((x) => x.id !== e.id));
     try { await db.deleteExpense(e.id); await doRefresh(); } catch (err) { alert(err.message); doRefresh(); }
   };
-  const openCreate = () => { setEditing(null); setFCat(cats[0] || ""); setFName(""); setFDate(new Date().toISOString().slice(0, 10)); setFAmt(""); setModal(true); };
+  const openCreate = () => { setEditing(null); setFCat(""); setFName(""); setFDate(new Date().toISOString().slice(0, 10)); setFAmt(""); setModal(true); };
   const openEdit = (e) => { setEditing(e); setFCat(e.category); setFName(e.name); setFDate(e.date); setFAmt(e.amount); setModal(true); };
   const save = async () => {
     const payload = { category: fCat || "Autre", name: fName || "—", amount: +fAmt || 0, spent_at: fDate };
@@ -3024,7 +3040,7 @@ function ExpensesScreen() {
         footer={<><Btn variant="line" onClick={() => setModal(false)}>{t.cancel}</Btn><Btn onClick={save}>{t.save}</Btn></>}>
         <Field label={t.category}>
           <div style={{ display: "flex", gap: 8 }}>
-            <Select value={fCat} onChange={(e) => setFCat(e.target.value)} style={{ flex: 1 }}>{cats.map((c) => <option key={c}>{c}</option>)}</Select>
+            <Select value={fCat} onChange={(e) => setFCat(e.target.value)} style={{ flex: 1 }}><option value="">— Sélectionner —</option>{cats.map((c) => <option key={c}>{c}</option>)}</Select>
             <Btn variant="soft" size="sm" onClick={() => setCatModal(true)}>➕</Btn>
           </div>
         </Field>

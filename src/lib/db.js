@@ -319,6 +319,19 @@ export const db = {
     supabase.from("teacher_attendance").select("*, plans(name,module_id,class_id,start_time,end_time,days_of_week)")
       .eq("teacher_id", teacherId).order("session_date", { ascending: false }).then(ok),
 
+  // ---- Auth user management (requires delete_auth_user RPC in Supabase) ---
+  // SQL to run once in Supabase SQL Editor:
+  // CREATE OR REPLACE FUNCTION public.delete_auth_user(p_auth_uid uuid)
+  // RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+  // BEGIN DELETE FROM auth.users WHERE id = p_auth_uid; END; $$;
+  findAuthUidByEntity: async (entityType, entityId) => {
+    const col = { teacher: "teacher_id", staff: "staff_id", student: "student_id", parent: "parent_id" }[entityType];
+    if (!col) return null;
+    const { data } = await supabase.from("profiles").select("auth_uid").eq(col, entityId).maybeSingle();
+    return data?.auth_uid || null;
+  },
+  deleteAuthUser: (authUid) => supabase.rpc("delete_auth_user", { p_auth_uid: authUid }),
+
   // ---- Teacher séance records (unpaid/paid tracking) ---------------------
   recordTeacherSeance: (teacherId, planId, sessionDate, studentsPresent, perSeancePrice) =>
     supabase.rpc("record_teacher_seance", {
