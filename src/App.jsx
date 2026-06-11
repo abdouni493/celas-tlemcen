@@ -1721,6 +1721,18 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
   const [sEmail, setSEmail] = useState(""); const [sPassword, setSPassword] = useState("");
   const [sIsFree, setSIsFree] = useState(false);
 
+  // auto-generate email/password from student name when creating (not editing)
+  useEffect(() => {
+    if (!editing) {
+      const norm = (s) =>
+        (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, "").replace(/[^a-z0-9]/g, "");
+      const first = norm(sFirst);
+      const last = norm(sLast);
+      setSEmail(last && first ? `${last}+${first}@celas.com` : "");
+      setSPassword(first ? `${first}+123` : "");
+    }
+  }, [sFirst, sLast, editing]);
+
   // assignment form
   const [aSub, setASub] = useState(SUB_TYPES[0]?.id || "");
   const [aStart, setAStart] = useState(new Date().toISOString().slice(0, 10));
@@ -1775,9 +1787,10 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
       if (sEmail && sPassword && !editing) {
         try {
           const { data: { session: adminSession } } = await db.auth.getSession();
-          await db.auth.signUp(sEmail, sPassword, {
+          const { error: signUpErr } = await db.auth.signUp(sEmail, sPassword, {
             role: "STUDENT", full_name: `${sFirst} ${sLast}`, student_id: created.id,
           });
+          if (signUpErr) throw signUpErr;
           if (adminSession?.access_token) {
             await db.auth.setSession({ access_token: adminSession.access_token, refresh_token: adminSession.refresh_token });
           }
@@ -1927,8 +1940,8 @@ function StudentsScreen({ canPay = true, canRemoveSub = false }) {
           <Field label={t.birthPlace}><Input value={sBirthPlace} onChange={(e) => setSBirthPlace(e.target.value)} /></Field>
           <Field label={t.idCard}><Input value={sIdCard} onChange={(e) => setSIdCard(e.target.value)} /></Field>
           <Field label={t.schoolNum}><Input value={sSchoolNum} onChange={(e) => setSSchoolNum(e.target.value)} /></Field>
-          <Field label={t.email}><Input type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)} /></Field>
-          <Field label={t.password}><Input type="password" value={sPassword} onChange={(e) => setSPassword(e.target.value)} /></Field>
+          <Field label={t.email}><Input type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)} placeholder="nom+prénom@celas.com" /></Field>
+          <Field label={t.password}><Input type="text" value={sPassword} onChange={(e) => setSPassword(e.target.value)} placeholder="prénom+123" /></Field>
         </div>
       </Modal>
 
