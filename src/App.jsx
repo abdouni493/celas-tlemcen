@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, createContext, useContext } from "
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { store, loadAll, addDays, classLabel, reloadStudents, reloadClasses, reloadGroups, reloadPlans, reloadSubTypes, reloadTeachers, reloadStaff, reloadExpenses, reloadParents, reloadAnnouncements, reloadTotals } from "./lib/store";
-import { db, supabase } from "./lib/db";
+import { db, supabase, subscribeToRealtime } from "./lib/db";
 import { filterStudentsByDateRange, filterStudentsByClass, filterStudentsByStatus, calculateSummaryStats, exportStudentsToExcel, exportTeachersToExcel, exportStaffToExcel, exportClassesToExcel, exportAttendanceToExcel, exportExpensesToExcel } from "./lib/excelExport";
 
 /* ============================================================================
@@ -4220,6 +4220,19 @@ function ProfileScreen({ icon, title }) {
 function TeacherDashboard() {
   const t = useT();
   const profile = useProfile();
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!profile?.teacher_id) { setLoading(false); return; }
+    (async () => {
+      try {
+        await Promise.all([reloadTeachers(), reloadPlans()]);
+        hydrate();
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    })();
+  }, [profile?.teacher_id]);
+
   const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
   const myPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : [];
   const myClassIds = [...new Set(myPlans.map((p) => p.classId).filter(Boolean))];
@@ -4227,8 +4240,11 @@ function TeacherDashboard() {
   const jsDay = today.getDay();
   const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
   const todayCount = myPlans.filter((p) => (p.days || []).includes(dayOfWeek)).length;
-  const base = me ? (me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 1000) * 20) : 0;
+  const base = me ? (me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 0) * 20) : 0;
   const todayStr = today.toLocaleDateString("fr-FR");
+
+  if (loading) return <div style={{ padding: 32, textAlign: "center", color: "var(--muted)" }}>Chargement…</div>;
+
   return (
     <div>
       <PageHead icon="🏠" title={t.dashboard} sub={t.today + " · " + todayStr} />
@@ -4240,7 +4256,7 @@ function TeacherDashboard() {
       <Panel title={t.nextSessions}>
         {myPlans.length === 0
           ? <Empty title={t.noResults} hint="Aucune séance assignée à ce compte enseignant." />
-          : myPlans.slice(0, 4).map((p) => (
+          : myPlans.slice(0, 5).map((p) => (
             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
               <div><b style={{ fontSize: 13.5 }}>{p.module || p.name}</b><p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>{p.className} · {p.group}</p></div>
               <Badge>{(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</Badge>
@@ -4256,12 +4272,17 @@ function AdminAttendanceScreen() {
   const t = useT();
   const profile = useProfile();
   const today = new Date();
-  // DB convention: 0=Mon … 6=Sun; JS getDay(): 0=Sun,1=Mon…6=Sat
-  const jsDay = today.getDay();
-  const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
-  const todayStr = today.toISOString().slice(0, 10);
   const dayNames = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-  const todayLabel = `${dayNames[dayOfWeek]} ${(todayStr || "").split("-").reverse().join("/")}`;
+
+  const [sessionDate, setSessionDate] = useState(today.toISOString().slice(0, 10));
+
+  const selectedDayOfWeek = useMemo(() => {
+    const d = new Date(sessionDate + "T00:00:00");
+    const js = d.getDay();
+    return js === 0 ? 6 : js - 1;
+  }, [sessionDate]);
+
+  const sessionLabel = `${dayNames[selectedDayOfWeek]} ${sessionDate.split("-").reverse().join("/")}`;
 
   const [todayPlans, setTodayPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -4275,7 +4296,7 @@ function AdminAttendanceScreen() {
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
   useEffect(() => {
-    db.plansForDay(dayOfWeek).then((plans) => {
+    db.plansForDay(selectedDayOfWeek).then((plans) => {
       setTodayPlans((plans || []).map((p) => ({
         id: p.id, name: p.name || p.module_name, module: p.module_name, className: p.class_label,
         group: p.group_name, teacher: p.teacher_name, teacherId: p.teacher_id,
@@ -4283,8 +4304,9 @@ function AdminAttendanceScreen() {
         endTime: (p.end_time || "10:00").slice(0, 5), days: Array.isArray(p.days_of_week) ? p.days_of_week : [],
         teacherPayModel: p.teacher_pay_model, teacherSeanceRate: p.teacher_seance_rate,
       })));
+      setSelectedPlan(null); setMarks({}); setDebtUsed({});
     }).catch(() => {});
-  }, [dayOfWeek]);
+  }, [selectedDayOfWeek]);
 
   const selectPlan = async (plan) => {
     setSelectedPlan(plan); setMarks({}); setDebtUsed({}); setTeacherStatus(null);
@@ -4322,7 +4344,7 @@ function AdminAttendanceScreen() {
   const markTeacher = async (status) => {
     if (!selectedPlan) return;
     try {
-      await db.markTeacherAttendance(selectedPlan.id, selectedPlan.teacherId, todayStr, status);
+      await db.markTeacherAttendance(selectedPlan.id, selectedPlan.teacherId, sessionDate, status);
       setTeacherStatus(status);
       flash(`👨‍🏫 ${selectedPlan.teacher}: ${status}`);
     } catch (e) { alert(e.message); }
@@ -4334,12 +4356,12 @@ function AdminAttendanceScreen() {
     try {
       const rows = planStudents.map((s) => {
         const m = marks[s.id];
-        return { plan_id: selectedPlan.id, student_id: s.id, status: m === "DEBT" ? "PRESENT" : (m || "ABSENT"), session_date: todayStr, is_debt: m === "DEBT" };
+        return { plan_id: selectedPlan.id, student_id: s.id, status: m === "DEBT" ? "PRESENT" : (m || "ABSENT"), session_date: sessionDate, is_debt: m === "DEBT" };
       });
       await db.saveAttendance(rows, profile?.id);
       const presentCount = planStudents.filter((s) => { const m = marks[s.id]; return m === "PRESENT" || m === "DEBT" || m === "LATE"; }).length;
       if (teacherStatus === "PRESENT" || teacherStatus === "LATE") {
-        try { await db.recordTeacherSeance(selectedPlan.teacherId, selectedPlan.id, todayStr, presentCount, selectedPlan.teacherSeanceRate || 0); } catch (_) {}
+        try { await db.recordTeacherSeance(selectedPlan.teacherId, selectedPlan.id, sessionDate, presentCount, selectedPlan.teacherSeanceRate || 0); } catch (_) {}
       }
       flash("✅ " + t.saved);
     } catch (e) { alert(e.message); }
@@ -4358,7 +4380,19 @@ function AdminAttendanceScreen() {
 
   return (
     <div>
-      <PageHead icon="✅" title={t.adminAttendance} sub={todayLabel} />
+      <PageHead icon="✅" title={t.adminAttendance} sub={sessionLabel} />
+
+      {/* Date picker */}
+      <div style={{ marginBottom: 14, maxWidth: 220 }}>
+        <Field label="📅 Date de la séance">
+          <input
+            type="date"
+            value={sessionDate}
+            onChange={(e) => { setSessionDate(e.target.value); setSelectedPlan(null); setMarks({}); setDebtUsed({}); }}
+            style={{ width: "100%", padding: "8px 12px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 13.5, fontFamily: "inherit" }}
+          />
+        </Field>
+      </div>
 
       {/* Day plan tabs */}
       <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 18, flexWrap: "nowrap" }}>
@@ -4458,16 +4492,36 @@ function AdminAttendanceScreen() {
 function AttendanceScreen() {
   const t = useT();
   const profile = useProfile();
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [sessionDate, setSessionDate] = useState(todayIso);
+
+  const selectedDayOfWeek = useMemo(() => {
+    const d = new Date(sessionDate + "T00:00:00");
+    const js = d.getDay();
+    return js === 0 ? 6 : js - 1;
+  }, [sessionDate]);
+
   const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
-  const myPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : PLANS;
-  const [session, setSession] = useState(myPlans[0]?.id || "");
-  const plan = myPlans.find((p) => p.id === session) || PLANS.find((p) => p.id === session);
+  const allMyPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : PLANS;
+  const plansForDay = allMyPlans.filter((p) => (p.days || []).includes(selectedDayOfWeek));
+
+  const [session, setSession] = useState("");
+  useEffect(() => {
+    if (plansForDay.length > 0) { setSession(plansForDay[0].id); }
+    else { setSession(""); }
+    setMarks({});
+    setDebtUsed({});
+  }, [sessionDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const plan = allMyPlans.find((p) => p.id === session) || null;
   const roster = useMemo(() => {
     if (!plan) return [];
     return STUDENTS.filter((s) =>
       s.classId === plan.classId || (s.activeSubscriptions || []).some((sub) => sub.class_id === plan.classId)
     );
-  }, [session]);
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [marks, setMarks] = useState({});
   const [debtUsed, setDebtUsed] = useState({});
   const [toast, setToast] = useState(null);
@@ -4475,7 +4529,7 @@ function AttendanceScreen() {
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
   const mark = async (s, v) => {
-    if (v === "PRESENT" && s.seancesRemaining === 0) {
+    if (v === "PRESENT" && s.seancesRemaining === 0 && !s.isFree) {
       if (debtUsed[s.id] || marks[s.id] === "DEBT") {
         flash(`⛔ ${s.firstName}: ${t.debtSeanceUsed}`);
         return;
@@ -4491,7 +4545,7 @@ function AttendanceScreen() {
       flash(`🎟️ ${s.firstName}: ${t.debtSeance} (-1)`);
       return;
     }
-    if (v === "PRESENT" && s.seancesRemaining > 0) {
+    if (v === "PRESENT" && s.seancesRemaining > 0 && !s.isFree) {
       try { await db.consumeSeance({ id: s.id, seances_remaining: s.seancesRemaining, debt_seance_used: s.debtSeanceUsed }); }
       catch (e) { if (e.message !== "DEBT_SEANCE_USED") alert(e.message); }
     }
@@ -4513,25 +4567,51 @@ function AttendanceScreen() {
 
   const doSave = async () => {
     if (!session) return;
-    const today = new Date().toISOString().slice(0, 10);
     const rows = roster.map((s) => {
       const m = marks[s.id];
-      return { plan_id: session, student_id: s.id, status: m === "DEBT" ? "PRESENT" : (m || "ABSENT"), session_date: today, is_debt: m === "DEBT" };
+      return { plan_id: session, student_id: s.id, status: m === "DEBT" ? "PRESENT" : (m || "ABSENT"), session_date: sessionDate, is_debt: m === "DEBT" };
     });
-    try { await db.saveAttendance(rows); flash("✅ " + t.saved); } catch (e) { alert(e.message); }
+    try { await db.saveAttendance(rows, profile?.id); flash("✅ " + t.saved); } catch (e) { alert(e.message); }
   };
 
+  const dayNames = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
   const counts = roster.reduce((a, s) => { const m = marks[s.id]; if (m === "PRESENT" || m === "DEBT") a.present++; else if (m === "LATE") a.late++; else if (m === "ABSENT") a.absent++; return a; }, { present: 0, late: 0, absent: 0 });
 
   return (
     <div>
-      <PageHead icon="✅" title={t.attendance} sub={plan ? `${plan.module || plan.name} · ${plan.className} · ${plan.group}` : ""} />
-      <div style={{ marginBottom: 16, maxWidth: 420 }}>
-        <Field label={t.selectSession}>
-          <Select value={session} onChange={(e) => { setSession(e.target.value); setMarks({}); setDebtUsed({}); }}>
-            {myPlans.map((p) => <option key={p.id} value={p.id}>{(p.module || p.name)} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}</option>)}
-          </Select>
-        </Field>
+      <PageHead icon="✅" title={t.attendance} sub={plan ? `${plan.module || plan.name} · ${plan.className} · ${plan.group}` : dayNames[selectedDayOfWeek]} />
+
+      {/* Date + Session selector */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", maxWidth: 560 }}>
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <Field label="📅 Date de la séance">
+            <input
+              type="date"
+              value={sessionDate}
+              onChange={(e) => setSessionDate(e.target.value)}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 13.5, fontFamily: "inherit" }}
+            />
+          </Field>
+        </div>
+        <div style={{ flex: 2, minWidth: 200 }}>
+          <Field label={t.selectSession}>
+            {plansForDay.length === 0 && (
+              <p style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0" }}>
+                Aucune séance ce jour — toutes les séances sont listées.
+              </p>
+            )}
+            <Select
+              value={session}
+              onChange={(e) => { setSession(e.target.value); setMarks({}); setDebtUsed({}); }}
+            >
+              {(plansForDay.length > 0 ? plansForDay : allMyPlans).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {(p.module || p.name)} · {(p.days||[]).map(d=>t.days[d]).join(", ")} {p.startTime}–{p.endTime}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
       </div>
 
       {/* summary chips */}
@@ -4547,7 +4627,7 @@ function AttendanceScreen() {
       <Panel title={`${t.roster} (${roster.length})`}>
         {roster.map((s, i) => {
           const m = marks[s.id];
-          const zero = s.seancesRemaining === 0;
+          const zero = s.seancesRemaining === 0 && !s.isFree;
           return (
             <motion.div key={s.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line)", flexWrap: "wrap", gap: 8 }}>
@@ -4556,7 +4636,10 @@ function AttendanceScreen() {
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.firstName} {s.lastName}</div>
                   <div style={{ display: "flex", gap: 5, marginTop: 3 }}>
-                    <Badge tone={zero ? "red" : s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining} {t.seances}</Badge>
+                    {s.isFree
+                      ? <Badge tone="green">🎁 {t.freeStudent}</Badge>
+                      : <Badge tone={zero ? "red" : s.seancesRemaining <= 2 ? "amber" : "gray"}>{s.seancesRemaining}/{s.seancesTotal} {t.seances}</Badge>
+                    }
                     {m === "DEBT" && <Badge tone="amber">🎟️ {t.debtSeance}</Badge>}
                     {zero && debtUsed[s.id] && m !== "DEBT" && <Badge tone="red">{t.debtSeanceUsed}</Badge>}
                   </div>
@@ -4574,7 +4657,8 @@ function AttendanceScreen() {
             </motion.div>
           );
         })}
-        <Btn style={{ marginTop: 16 }} onClick={doSave}>{t.save}</Btn>
+        {roster.length === 0 && <p style={{ color: "var(--muted)", fontSize: 13, margin: "8px 0" }}>{session ? "Aucun étudiant dans cette classe." : "Sélectionnez une séance ci-dessus."}</p>}
+        {roster.length > 0 && <Btn style={{ marginTop: 16 }} onClick={doSave}>{t.save}</Btn>}
       </Panel>
 
       <AnimatePresence>
@@ -4592,20 +4676,48 @@ function AttendanceScreen() {
 function TeacherSalary() {
   const t = useT();
   const profile = useProfile();
-  const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || TEACHERS[0];
-  const base = me ? (me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 1000) * 20) : 0;
+  const [me, setMe] = React.useState(TEACHERS.find((x) => x.id === profile?.teacher_id) || null);
+  const [history, setHistory] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!profile?.teacher_id) { setLoading(false); return; }
+    (async () => {
+      try {
+        await reloadTeachers();
+        hydrate();
+        setMe(TEACHERS.find((x) => x.id === profile.teacher_id) || null);
+        const payments = await db.listTeacherSalaryPayments(profile.teacher_id).catch(() => []);
+        setHistory(payments || []);
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    })();
+  }, [profile?.teacher_id]);
+
+  const base = me ? (me.payModel === "FIXED" ? me.baseSalary : (me.seanceRate || 0) * 20) : 0;
+  const totalAcomptes = (me?.acomptes || []).reduce((s, a) => s + Number(a.amount), 0);
+  const totalAbsences = (me?.absences || []).reduce((s, a) => s + Number(a.cost), 0);
+
   return (
     <div>
       <PageHead icon="💵" title={t.mySalary} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 16 }}>
         <StatCard label={t.salary} value={base} icon="💼" money />
-        <StatCard label={t.acompte} value={(me?.acomptes || []).reduce((s, a) => s + a.amount, 0)} icon="💵" tone="amber" money />
-        <StatCard label={t.absence} value={(me?.absences || []).reduce((s, a) => s + a.cost, 0)} icon="📋" tone="red" money />
+        <StatCard label={t.acompte} value={totalAcomptes} icon="💵" tone="amber" money />
+        <StatCard label={t.absence} value={totalAbsences} icon="📋" tone="red" money />
       </div>
       <Panel title={t.history}>
-        {[2, 3, 4].map((m) => (
-          <div key={m} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--line)", fontSize: 13.5 }}>
-            <span>{t.months[m]} 2026</span><span className="mono" style={{ color: "var(--green)", fontWeight: 700 }}>{fmt(base)}</span>
+        {loading && <p style={{ color: "var(--muted)", fontSize: 13 }}>Chargement…</p>}
+        {!loading && history.length === 0 && (
+          <p style={{ color: "var(--muted)", fontSize: 13 }}>Aucun historique de paiement.</p>
+        )}
+        {history.map((pay) => (
+          <div key={pay.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)", fontSize: 13.5 }}>
+            <div>
+              <span style={{ fontWeight: 600 }}>{pay.period || pay.paid_at}</span>
+              {pay.note && <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>{pay.note}</p>}
+            </div>
+            <span className="mono" style={{ color: "var(--green)", fontWeight: 700 }}>{fmt(pay.amount)}</span>
           </div>
         ))}
       </Panel>
@@ -4617,12 +4729,26 @@ function TeacherClasses() {
   const t = useT();
   const profile = useProfile();
   const [open, setOpen] = useState(null);
-  const me = TEACHERS.find((x) => x.id === profile?.teacher_id) || null;
-  const myPlans = me ? PLANS.filter((p) => p.teacherId === me.id) : [];
+  const [myPlans, setMyPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    if (!profile?.teacher_id) { setLoading(false); return; }
+    (async () => {
+      try {
+        await Promise.all([reloadTeachers(), reloadPlans()]);
+        hydrate();
+        setMyPlans(PLANS.filter((p) => p.teacherId === profile.teacher_id));
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    })();
+  }, [profile?.teacher_id]);
 
   const studentsOfPlan = (p) => STUDENTS.filter((s) =>
     s.classId === p.classId || (s.activeSubscriptions || []).some((sub) => sub.class_id === p.classId)
   );
+
+  if (loading) return <div style={{ padding: 32, textAlign: "center", color: "var(--muted)" }}>Chargement…</div>;
 
   return (
     <div>
@@ -5209,11 +5335,19 @@ export default function App() {
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!role) return;
+    let timeout = null;
+    const debouncedRefresh = () => { clearTimeout(timeout); timeout = setTimeout(() => refresh(), 800); };
+    const unsubscribe = subscribeToRealtime(debouncedRefresh);
+    return () => { unsubscribe(); clearTimeout(timeout); };
+  }, [role, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSignOut = async () => {
     try { await db.auth.signOut(); } catch (_) {}
     setRole(null); setProfile(null);
   };
-  const handleLogin = (roleIn, profileIn) => { setRole(roleIn); if (profileIn) setProfile(profileIn); };
+  const handleLogin = async (roleIn, profileIn) => { setRole(roleIn); if (profileIn) setProfile(profileIn); await refresh(); };
 
   const screen = (() => {
     if (loading) return <BootScreen text="Chargement des données…" />;

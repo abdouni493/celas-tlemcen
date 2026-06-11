@@ -10,6 +10,20 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+export function subscribeToRealtime(onRefresh) {
+  const channel = supabase
+    .channel("db-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "students" }, onRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, onRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, onRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "plans" }, onRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "teachers" }, onRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "salary_payments" }, onRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, onRefresh)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
 const ok = ({ data, error }) => { if (error) throw error; return data; };
 
 export const db = {
